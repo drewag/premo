@@ -1,0 +1,11 @@
+{
+  "name": "web-app",
+  "version": "0",
+  "description": "Vite + React 19 SPA. Optionally talks to backend via the shared ApiSchema.",
+  "dependsOn": [],
+  "softDependsOn": ["shared", "backend"],
+  "ports": [{ "name": "WEB_PORT", "offset": 0 }],
+  "workspace": { "path": "web-app" },
+  "devCommand": "yarn dev",
+  "claudeFragment": "claude.md"
+}

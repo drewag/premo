@@ -1,0 +1,41 @@
+{
+  "name": "strand",
+  "version": "0.0.0",
+  "description": "Opinionated CLI for scaffolding and running component-based, agent-friendly coding projects.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "strand": "./bin/strand.ts"
+  },
+  "scripts": {
+    "strand": "tsx bin/strand.ts",
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint . && prettier --check .",
+    "lint:fix": "eslint --fix . && prettier --write .",
+    "test": "yarn test:unit",
+    "test:unit": "vitest run --project=unit",
+    "test:integration": "vitest run --project=integration",
+    "test:watch": "vitest --project=unit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "execa": "^9.5.1",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.6.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.16.0",
+    "@typescript-eslint/parser": "^8.16.0",
+    "eslint": "^9.16.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.6"
+  }
+}

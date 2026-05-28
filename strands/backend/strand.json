@@ -1,0 +1,11 @@
+{
+  "name": "backend",
+  "version": "0",
+  "description": "Express + Zod API server. Registers handlers against the shared ApiSchema.",
+  "dependsOn": ["shared"],
+  "softDependsOn": ["db"],
+  "ports": [{ "name": "BACKEND_PORT", "offset": 10 }],
+  "workspace": { "path": "backend" },
+  "devCommand": "yarn dev",
+  "claudeFragment": "claude.md"
+}
