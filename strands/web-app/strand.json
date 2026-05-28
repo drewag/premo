@@ -7,5 +7,8 @@
   "ports": [{ "name": "WEB_PORT", "offset": 0 }],
   "workspace": { "path": "web-app" },
   "devCommand": "yarn dev",
-  "claudeFragment": "claude.md"
+  "claudeFragment": "claude.md",
+  "open": {
+    "url": "http://127.0.0.1:${WEB_PORT}"
+  }
 }

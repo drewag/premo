@@ -6,6 +6,8 @@ import { register as dev } from "../src/cli/commands/dev.js";
 import { register as stop } from "../src/cli/commands/stop.js";
 import { register as list } from "../src/cli/commands/list.js";
 import { register as ports } from "../src/cli/commands/ports.js";
+import { register as open } from "../src/cli/commands/open.js";
+import { register as shell } from "../src/cli/commands/shell.js";
 
-const program = buildProgram([doctor, newCmd, dev, stop, list, ports]);
+const program = buildProgram([doctor, newCmd, dev, stop, list, ports, open, shell]);
 await program.parseAsync(process.argv);

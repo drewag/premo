@@ -16,6 +16,16 @@ describe("strand discovery", () => {
   it("throws on unknown strand", async () => {
     await expect(loadStrand("does-not-exist")).rejects.toThrow(/not found/);
   });
+
+  it("parses open/shell declarations on the MVP strands", async () => {
+    const db = await loadStrand("db");
+    expect(db.manifest.shell?.kind).toBe("compose-exec");
+    expect(db.manifest.shell?.service).toBe("db");
+    const backend = await loadStrand("backend");
+    expect(backend.manifest.open?.url).toContain("BACKEND_PORT");
+    const web = await loadStrand("web-app");
+    expect(web.manifest.open?.url).toContain("WEB_PORT");
+  });
 });
 
 describe("resolveStrandSet", () => {

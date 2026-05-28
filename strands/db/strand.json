@@ -27,5 +27,11 @@
       }
     }
   },
-  "claudeFragment": "claude.md"
+  "claudeFragment": "claude.md",
+  "shell": {
+    "kind": "compose-exec",
+    "service": "db",
+    "command": ["psql", "-U", "app", "-d", "app"],
+    "description": "psql into the project's Postgres (compose service `db`)"
+  }
 }

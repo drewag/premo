@@ -15,6 +15,21 @@ export const StrandWorkspace = z.object({
   path: z.string(),
 });
 
+export const StrandOpen = z.object({
+  url: z.string(),
+});
+
+export const StrandShell = z
+  .object({
+    kind: z.enum(["compose-exec", "command"]),
+    service: z.string().optional(),
+    command: z.array(z.string()).min(1),
+    description: z.string().optional(),
+  })
+  .refine((s) => s.kind !== "compose-exec" || !!s.service, {
+    message: "shell.service is required when kind is 'compose-exec'",
+  });
+
 export const StrandManifest = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]*$/),
   version: z.string().default("0"),
@@ -27,6 +42,8 @@ export const StrandManifest = z.object({
   skills: z.array(z.string()).default([]),
   claudeFragment: z.string().optional(),
   devCommand: z.string().optional(),
+  open: StrandOpen.optional(),
+  shell: StrandShell.optional(),
 });
 export type StrandManifest = z.infer<typeof StrandManifest>;
 
