@@ -92,15 +92,20 @@ A pluggable component. A strand is a directory under `strands/` (in the `strand`
 
 ```
 strands/backend/
-  strand.json           # metadata, deps, ports, profiles, commands, skills
-  template/             # files copied into the project on `strand add`
-  hooks/                # optional TS hooks (postAdd, preDev, compose, etc.)
-  skills/               # SKILL.md files copied into project's .claude/skills/
+  strand.json                  # metadata, deps, ports, profiles, commands
+  template/
+    managed/                   # files strand owns; regenerated on add/sync
+    bootstrap/                 # files strand seeds once; user owns thereafter
+  integrations/                # skills that wire this strand to others
+    db/SKILL.md                # runs when both `db` and this strand are active
+  skills/                      # SKILL.md files copied into project's .claude/skills/
 ```
 
-Strands are _additive_: `strand add web-app` copies `template/` into the project, merges `package.json` and `tsconfig`, registers compose profiles, and installs its skills.
+Strands are _additive_: `strand add web-app` writes the strand's bootstrap files (if absent), regenerates its managed files, registers compose profiles, installs its skills, and notes any new integration skills that the current strand set now activates.
 
-Strands declare dependencies (`backend` depends on `shared`; `web-app` depends on `shared` if `backend` is present; `ios` depends on `shared`). Resolution is trivial — toposort the requested set.
+Strands declare dependencies (`backend` depends on `shared`; `ios` depends on `shared`). Resolution is trivial — toposort the requested set. Cross-strand _wiring_ (e.g. backend's Prisma client setup when `db` is also present) is **not** a hard dependency — it's an integration skill, see below.
+
+The file-tier split (managed vs bootstrap) is the load-bearing mechanism for §9 — strand can refresh its own managed files on every `add`/`sync` without risk of clobbering user work, because user-owned changes by definition only live in bootstrap files.
 
 ### Worktree
 
@@ -115,6 +120,14 @@ Distinct from git branches deliberately — you frequently want to keep your dat
 ### Skill
 
 A `.claude/skills/<name>/SKILL.md` with YAML frontmatter. Strands ship skills; strand itself ships top-level meta-skills (`worktree-create`, `data-branch`, etc.) that work in any strand project.
+
+### Integration skill
+
+A specific kind of skill: prose instructions for an agent to wire two strands together (e.g. add a Prisma client setup to `backend/src/api.ts` when `db` is active). Lives in a strand's `integrations/<other-strand>/SKILL.md`. Fires automatically when both strands are active, either at `strand new`, `strand add`, or via the explicit `strand integrate` command. Falls back to a printed checklist for human-only workflows. The full model is in §9.
+
+### Drift
+
+A managed file the user has edited away from what strand would currently write. Detected at `strand sync` time via on-write hash. Strand warns and skips rather than overwriting; an explicit `--force` re-applies the strand version. Bootstrap files are never compared — they're the user's by definition.
 
 ---
 
@@ -316,7 +329,116 @@ This is _templated_, not libraried, on day one — copying ~150 lines of Zod-typ
 
 ---
 
-## 9. Decisions (locked)
+## 9. Content tiers & extending projects over time
+
+A strand project is meant to grow. The most common path: scaffold with `--with shared,backend,web-app`, work for a week, then decide you actually want a database — `strand add db`. By that point the user may have rewritten half of `backend/src/api.ts`, added their own controllers, restructured the workspace. Strand has to land the new strand cleanly without clobbering any of that.
+
+The mechanism that makes this safe is a strict separation of strand-contributed files into tiers, plus an agent-mediated approach to the bits that genuinely need to modify user code.
+
+### 9.1 Two file tiers
+
+Every file a strand contributes is classified at template authoring time:
+
+- **Managed** — strand owns it. Regenerated on every `strand add`, `strand sync`, or anything else that re-runs the strand's emit. The user can edit it, but it's the strand's file; edits are at the user's risk (see §9.4 on drift). Examples:
+  - `docker-compose.yml` (generated from active strands' compose fragments)
+  - `.env.example` (generated from active strands' port declarations)
+  - Generated API client types (e.g. Swift codegen output for iOS)
+  - Strand-shipped skills under `.claude/skills/<strand-name>/`
+  - Future: a generated `tsconfig.references.json` if we ever need one
+- **Bootstrap** — strand seeds it on the strand's first install in this project, then never touches it again. The user owns it from that point. Examples:
+  - `backend/src/api.ts`, `backend/src/controllers/*`, `backend/prisma/schema.prisma`
+  - `web-app/src/App.tsx`, `web-app/src/main.tsx`, `web-app/vite.config.ts`
+  - `shared/src/api/routes.ts` (the registry; users will edit this constantly)
+  - `package.json` files in workspaces (users add deps, scripts)
+
+**Declaration is structural, not metadata.** Each strand's `template/` directory has `managed/` and `bootstrap/` subdirectories. Whatever path you put under `template/managed/<x>` becomes `<x>` in the user's project under managed semantics. Same for `bootstrap/`. No per-file flag in the manifest — the directory tells you everything.
+
+```
+strands/db/
+  template/
+    managed/
+      docker-compose.yml.fragment    # contributes to the generated compose
+      .env.example.fragment          # contributes to the generated env example
+    bootstrap/
+      backend/prisma/schema.prisma   # only seeded when backend is also active
+```
+
+(The `.fragment` extension is a convention for "this isn't a complete file — it gets merged with other strands' contributions to produce the actual file." Plain files in `managed/` are written as-is.)
+
+The default tier, when in doubt, is **bootstrap** — the safer choice. A file you intended to manage but accidentally wrote as bootstrap just means it doesn't auto-refresh; a file you intended to bootstrap but accidentally wrote as managed could overwrite real work.
+
+### 9.2 Integration skills
+
+There's a third category of strand contribution that isn't a file at all: instructions for an agent to wire two strands together. These live in `strands/<strand>/integrations/<other-strand>/SKILL.md`.
+
+Example: `strands/db/integrations/backend/SKILL.md` describes how to add a Prisma client setup to the backend strand's bootstrap files (`backend/src/api.ts`, `backend/package.json`). The skill is a markdown document with YAML frontmatter:
+
+```yaml
+---
+name: wire-db-into-backend
+description: Add Prisma client setup to a backend strand alongside the db strand.
+requiresStrands: [db, backend]
+---
+```
+
+Followed by prose that an agent (Claude Code, etc.) reads and executes by editing the user's _actual current_ `backend/src/api.ts`, not a hypothetical template. The agent reads the file, figures out where the imports go, where the client should be initialized, what existing structure to respect, and makes a targeted edit.
+
+**When integration skills fire:**
+
+- **`strand new --with X,Y,Z`** — after all strands' files are written, strand lists every integration skill whose `requiresStrands` is satisfied by the active set and runs them in order.
+- **`strand add X`** — same, but only for integrations newly satisfied by adding `X`.
+- **`strand integrate`** — explicit re-run; useful if the user just adopted strand mid-project or skipped the integration step earlier.
+
+**Agent-vs-human fallback.** If a coding agent is in the loop, the integration runs end-to-end. If not (a human typing in a terminal), strand prints a numbered checklist of the pending integration skills with their descriptions and file paths, leaving execution to the human. This is "not delightful" but workable — strand is explicitly agent-first (see §10 decisions).
+
+### 9.3 Lifecycle commands
+
+The tier model implies a small command surface:
+
+- `strand add <strand>` — add a strand to the project. Writes its bootstrap files (if absent), regenerates managed files, runs newly-applicable integrations.
+- `strand remove <strand>` — remove a strand. Deletes its bootstrap files _only if untouched since seed_ (hash-checked); otherwise warns. Always regenerates managed files. Optionally lists "un-integration" skills the user may want to run by hand.
+- `strand sync` — re-emit all managed files from the current strand set. Safe to run any time; the typical reason is to refresh after editing `strand.json` directly, or after upgrading the strand CLI to a version with revised templates.
+- `strand integrate [skill]` — re-run pending integration skills, or a specific one. No-op if all integrations are satisfied (tracked in `.strand-local.json`).
+
+### 9.4 Drift detection
+
+When strand writes a managed file, it records the file's hash in `.strand-local.json`. On any later regeneration:
+
+- If the on-disk file's hash matches what strand last wrote → safe to overwrite, no diff.
+- If the on-disk hash differs → the user (or some other process) modified the file. Strand warns:
+  ```
+  ! managed file `docker-compose.yml` has been edited since last sync.
+    Skipped. Re-run with `--force` to overwrite, or move your edits
+    into a strand contribution if they belong there.
+  ```
+
+Strand never silently overwrites a drifted file. Bootstrap files have no hashing — they're explicitly the user's territory.
+
+A future option (not v0.2): record both the seeded hash _and_ the current hash on every sync, so an "I overwrote that drift on purpose" doesn't perpetually re-warn. Defer until users actually trip on it.
+
+### 9.5 What we explicitly are not doing
+
+Three alternatives we considered and rejected:
+
+- **Sentinel markers in source code** (`// strand:db:start` / `// strand:db:end`). Brittle, ugly, composes poorly across strands editing the same region, users delete them.
+- **AST codemods** (jscodeshift / ts-morph per integration). Heavy to maintain, breaks on unanticipated user patterns, doesn't generalize across languages.
+- **Three-way merge** against a snapshot of the original template render (Copier-style). Real conflict resolution UI to build; conflicts still hit the user; over-engineered for the agent-first case.
+
+The agent doing the editing is already the smartest entity in the loop about reading and modifying user code. We defer to it for the modifying parts and never try to outsmart it from inside the CLI.
+
+### 9.6 What this means for current strands
+
+The four shipped strands (`shared`, `db`, `backend`, `web-app`) were authored before this model was formalized. Before v0.2 implementation, each needs a tier-classification pass:
+
+- Most existing template files are **bootstrap** (api.ts, App.tsx, prisma/schema.prisma when we add it, eslint configs, tsconfigs, package.json files).
+- A small number become **managed** (currently `docker-compose.yml` is already implicitly managed by being regenerated each `strand dev`; `.env.example` will join it).
+- One integration skill needs to exist before db's value lands fully: `db ↔ backend` Prisma wiring.
+
+This reclassification is part of the v0.2 milestone, not a separate step.
+
+---
+
+## 10. Decisions (locked)
 
 1. **Yarn classic (1.x) + workspaces.**
 2. **CLI distribution:** published to npm as `@<handle>/strand` (bare `strand` is squatted by an abandoned 0.0.1 package). Also runnable from clone via `bun bin/strand.ts`. During strand's own development, integration tests invoke `bun /path/to/strand/bin/strand.ts` directly — no `yarn link`, no global install. Bun-compiled binaries deferred.
@@ -334,14 +456,17 @@ This is _templated_, not libraried, on day one — copying ~150 lines of Zod-typ
 13. **`strand` doesn't dogfood itself in v0** — the strand repo is a normal TS monorepo, not a strand-generated project. Revisit at v1.
 14. **`strand doctor` checks:** Node ≥ 22, Docker running, git ≥ 2.30, yarn classic installed. (Port availability is checked by `strand dev` at run time against the project's actual base, not by `doctor` — a stale generic check was misleading.)
 15. **Name: `strand`.** Accepting the AWS Strands Agents shadow as the lesser evil after surveying loom/rig/spoke alternatives.
+16. **Content tiers are structural, not metadata.** Each strand's `template/managed/` and `template/bootstrap/` directories tell strand which files it owns vs which the user owns. No per-file flag in the manifest. Default-bootstrap if in doubt — safer to under-manage than to over-manage.
+17. **Cross-strand wiring is done by integration skills, not codemods.** Each strand ships `integrations/<other-strand>/SKILL.md` documents that an agent executes against the user's actual current code. For human-only workflows, strand prints the integrations as a checklist. Agent-first is the load-bearing assumption.
+18. **Managed-file drift is warned, never auto-resolved.** Strand hashes managed files on write; on later sync it warns and skips if the on-disk hash diverges. `--force` to override. Bootstrap files are not hashed — they belong to the user.
 
 ---
 
-## 10. Testing & linting ethos
+## 11. Testing & linting ethos
 
 Non-negotiable, both in `strand` itself and in every project it generates. The email project's experience is that "tests as a thing you add later" doesn't happen — they have to be in the starting state.
 
-### 10.1 What every generated project ships with
+### 11.1 What every generated project ships with
 
 Every `strand new` produces a project where `yarn test` and `yarn lint` pass on the first try:
 
@@ -357,13 +482,13 @@ Every `strand new` produces a project where `yarn test` and `yarn lint` pass on 
 - **No git hooks.** Lint/format enforcement is delegated to skills (e.g. a `commit` skill that runs `yarn lint:fix` and `yarn test` before staging). Since the primary user is a coding agent operating through skills, hook-based enforcement is redundant — the skill is the workflow. Humans who want belt-and-suspenders can add husky themselves; strand doesn't ship it.
 - **CI workflow file** at `.github/workflows/ci.yml` running `yarn install --frozen-lockfile && yarn lint && yarn test`.
 
-### 10.2 CLI commands
+### 11.2 CLI commands
 
 - `strand test [strand]` — `yarn workspace <strand> test`, defaults to all (and later, with change-awareness, to changed only).
 - `strand lint [strand]` / `strand lint:fix [strand]` — same shape.
 - These are thin wrappers over yarn workspace commands; the value is consistent surface across projects.
 
-### 10.3 Testing the `strand` CLI itself
+### 11.3 Testing the `strand` CLI itself
 
 Two suites, deliberately separated by speed.
 
@@ -411,7 +536,7 @@ As strands grow (`site`, `ios`, `worker`), each new strand adds at least one com
 - Each test uses a unique project name → unique port block → unique data dir → no cross-test interference.
 - Hard timeout + cleanup in `afterEach` regardless of pass/fail.
 
-### 10.4 Roadmap implications
+### 11.4 Roadmap implications
 
 The MVP (`v0.0`) **must** ship:
 
@@ -423,16 +548,15 @@ If these don't all pass, the milestone isn't done.
 
 ---
 
-## 11. Phased roadmap
+## 12. Phased roadmap
 
-- **v0.0** (this milestone): design doc + skeleton repo, `strand doctor`, `strand new`, `strand dev`, `strand stop`, `strand test`, `strand lint`, four strands (`shared`, `db`, `backend`, `web-app`). **Unit + integration test suites for the CLI per §10.4.**
+- **v0.0** (shipped): design doc + skeleton repo, `strand doctor`, `strand new`, `strand dev`, `strand stop`, `strand lint`/`test` via `yarn`, `strand open`, `strand shell`, `strand ports`, four strands (`shared`, `db`, `backend`, `web-app`). Unit + integration test suites for the CLI per §11.4.
 - **v0.1**: worktree + data-branch model (`strand tree`, `strand data`).
-- **v0.2**: `site` strand (Next.js static + backend wiring) + matrix entries.
-- **v0.3**: change-aware `build`/`test`/`lint`.
-- **v0.4**: `ios` strand + Swift codegen from `shared` + matrix entries.
-- **v0.5**: `strand add` / `strand remove` reach idempotent maturity.
+- **v0.2** (the content-tier milestone — see §9): reclassify existing strand templates into `template/managed/` vs `template/bootstrap/`; ship `strand add`, `strand remove`, `strand sync`, `strand integrate`; ship skill metadata + auto-loading; first integration skill (`db ↔ backend` Prisma wiring); managed-file drift detection + warnings.
+- **v0.3**: `site` strand (Next.js static + backend wiring) + matrix entries. Adds at least one new integration skill (`site ↔ backend` API base URL wiring).
+- **v0.4**: change-aware `build`/`test`/`lint`.
+- **v0.5**: `ios` strand + Swift codegen from `shared` + matrix entries. Adds `ios ↔ shared` codegen integration.
 - **v0.6**: deploy hooks (per-strand `deploy` command surface).
-- **v0.x**: skill metadata + auto-loading, `strand skill` runner.
 
 ---
 
