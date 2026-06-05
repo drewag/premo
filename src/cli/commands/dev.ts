@@ -35,8 +35,9 @@ export function register(program: Command): void {
           await runScaffoldedDev(ctx);
           return;
         }
-        // Prompt for a destination interactively, unless detaching.
-        const xcodeEnv = await resolveXcodeEnv(ctx, opts, !opts.background);
+        // Prompt for a destination interactively, unless detaching; remember it
+        // as this project's last-run device for next time.
+        const xcodeEnv = await resolveXcodeEnv(ctx, opts, !opts.background, true);
         if (xcodeEnv === null) {
           process.exitCode = 1;
           return;

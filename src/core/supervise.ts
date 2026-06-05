@@ -1,43 +1,12 @@
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { execa } from "execa";
 import { ensureRuntimeDir, runtimeDir } from "./runtime.js";
+import { type BackgroundProc, loadLocal, saveLocal } from "./local.js";
 
-const LOCAL_FILE = ".strand-local.json";
-
-export interface BackgroundProc {
-  name: string;
-  pid: number;
-  pgid: number;
-  logPath: string;
-  command: string;
-  startedAt: string;
-}
-
-interface LocalState {
-  background?: BackgroundProc[];
-}
-
-function localPath(root: string): string {
-  return path.join(root, LOCAL_FILE);
-}
-
-async function loadLocal(root: string): Promise<LocalState> {
-  const file = localPath(root);
-  if (!existsSync(file)) return {};
-  try {
-    return JSON.parse(await readFile(file, "utf8")) as LocalState;
-  } catch {
-    return {};
-  }
-}
-
-async function saveLocal(root: string, state: LocalState): Promise<void> {
-  await writeFile(localPath(root), JSON.stringify(state, null, 2) + "\n", "utf8");
-}
+export type { BackgroundProc };
 
 function isAlive(pid: number): boolean {
   try {

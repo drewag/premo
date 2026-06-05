@@ -9,12 +9,14 @@ export interface DestFlags {
 }
 
 // Resolve the STRAND_XCODE_* env for a verb run. A no-op (empty env) for
-// non-xcode projects. On a resolution failure (e.g. no destination and no
-// default) it logs the message and returns null so the caller can abort.
+// non-xcode projects. `remember` persists the chosen destination as the
+// project's last-run device (set by `dev`). On a resolution failure (e.g. no
+// destination and no default) it logs the message and returns null to abort.
 export async function resolveXcodeEnv(
   ctx: Context,
   flags: DestFlags,
   interactive: boolean,
+  remember = false,
 ): Promise<NodeJS.ProcessEnv | null> {
   try {
     return await xcodeEnvFor(ctx.manifest, {
@@ -22,6 +24,8 @@ export async function resolveXcodeEnv(
       platform: flags.platform,
       verbose: flags.verbose,
       interactive,
+      root: ctx.root,
+      remember,
     });
   } catch (err) {
     log.error((err as Error).message);

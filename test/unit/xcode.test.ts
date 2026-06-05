@@ -9,6 +9,12 @@ import { execa } from "execa";
 import { ProjectManifest } from "../../src/strand-api/types.js";
 import { detectAdapter } from "../../src/core/adapters/index.js";
 import { xcodeAdapter } from "../../src/core/adapters/xcode.js";
+import { readFile } from "node:fs/promises";
+import {
+  ensureStrandGitignore,
+  readLastXcodeDest,
+  writeLastXcodeDest,
+} from "../../src/core/local.js";
 import {
   findXcodeProject,
   listPhysicalDevices,
@@ -245,6 +251,89 @@ describe("xcodeEnvFor", () => {
     const env = await xcodeEnvFor(manifest, { device: "andrew's iphone", interactive: false });
     expect(env.STRAND_XCODE_DEVICE_UDID).toBe("00008120-001E445E0C11");
     expect(env.STRAND_XCODE_BOOT_UDID).toBeUndefined();
+  });
+});
+
+describe("last-destination memory", () => {
+  const IPHONE = "platform=iOS Simulator,id=UDID-IPHONE";
+  const IPAD = "platform=iOS Simulator,id=UDID-IPAD";
+
+  // configured default = iPad; last run = iPhone. (iPad is also the booted sim,
+  // so this proves the memory wins over both the config default and "booted".)
+  const cfgIpad = {
+    project: "Awooga.xcodeproj",
+    scheme: "Awooga",
+    defaultDestination: { platform: "ios-simulator", deviceName: "iPad Pro", os: "26.2" },
+  };
+
+  it("round-trips the last destination through .strand-local.json", async () => {
+    const root = await tmp();
+    expect(await readLastXcodeDest(root)).toBeUndefined();
+    await writeLastXcodeDest(root, {
+      dest: IPHONE,
+      label: "iPhone 17 Pro",
+      bootUdid: "UDID-IPHONE",
+    });
+    expect(await readLastXcodeDest(root)).toMatchObject({ dest: IPHONE, bootUdid: "UDID-IPHONE" });
+  });
+
+  it("defaults the picker to the last-run destination over the config default", async () => {
+    stubSimctl();
+    const root = await tmp();
+    await writeLastXcodeDest(root, { dest: IPHONE, label: "iPhone 17 Pro" });
+    const d = await resolveDestination({
+      manifest: xcodeManifest({ xcode: cfgIpad }),
+      interactive: true,
+      root,
+    });
+    expect(d.dest).toBe(IPHONE);
+  });
+
+  it("falls back to the config default when the remembered device is gone", async () => {
+    stubSimctl();
+    const root = await tmp();
+    await writeLastXcodeDest(root, { dest: "platform=iOS Simulator,id=GONE", label: "Old" });
+    const d = await resolveDestination({
+      manifest: xcodeManifest({ xcode: cfgIpad }),
+      interactive: true,
+      root,
+    });
+    expect(d.dest).toBe(IPAD);
+  });
+
+  it("remembers the destination after a run, only when asked", async () => {
+    stubSimctl();
+    const manifest = xcodeManifest({ xcode: { project: "Awooga.xcodeproj", scheme: "Awooga" } });
+
+    const noRemember = await tmp();
+    await xcodeEnvFor(manifest, { device: "17 pro", interactive: false, root: noRemember });
+    expect(await readLastXcodeDest(noRemember)).toBeUndefined();
+
+    const remembered = await tmp();
+    await xcodeEnvFor(manifest, {
+      device: "17 pro",
+      interactive: false,
+      root: remembered,
+      remember: true,
+    });
+    expect(await readLastXcodeDest(remembered)).toMatchObject({ dest: IPHONE });
+  });
+});
+
+describe("ensureStrandGitignore", () => {
+  it("adds strand-local paths once, idempotently, preserving existing entries", async () => {
+    const root = await tmp();
+    await writeFile(path.join(root, ".gitignore"), "node_modules\n");
+
+    await ensureStrandGitignore(root);
+    const after = await readFile(path.join(root, ".gitignore"), "utf8");
+    expect(after).toContain("node_modules");
+    expect(after).toContain(".strand-local.json");
+    expect(after).toContain(".strand/");
+    expect(after).toContain(".runtime/");
+
+    await ensureStrandGitignore(root); // no-op the second time
+    expect(await readFile(path.join(root, ".gitignore"), "utf8")).toBe(after);
   });
 });
 

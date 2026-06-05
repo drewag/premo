@@ -4,6 +4,7 @@ import { readdirSync } from "node:fs";
 import pc from "picocolors";
 import type { ProjectManifest, XcodeDestination } from "../strand-api/types.js";
 import { selectFromList } from "./select.js";
+import { readLastXcodeDest, writeLastXcodeDest } from "./local.js";
 
 // --- locating the project/workspace --------------------------------------
 
@@ -280,6 +281,7 @@ export interface ResolveOptions {
   flagDevice?: string; // --device: simulator name or udid substring
   flagPlatform?: string; // --platform: ios|macos|visionos|…
   interactive: boolean; // prompt when no flag and attached to a TTY
+  root?: string; // project root, for reading the remembered last destination
 }
 
 // Resolve which destination to build/run for. Precedence:
@@ -328,21 +330,35 @@ export async function resolveDestination(opts: ResolveOptions): Promise<Destinat
     );
   }
 
-  // 3. interactive pick, preselecting the configured default
+  // 3. interactive pick. Float the two most likely choices to the top: the
+  // destination last run here (preselected, if still available), then the
+  // configured default. The rest keep their natural order below them.
   const devices = await listPhysicalDevices();
   const all = toMenu(sims, devices);
+  const last = opts.root ? await readLastXcodeDest(opts.root) : undefined;
+
+  const lastIdx = last ? all.findIndex((d) => d.dest === last.dest) : -1;
   const cfgIdx = fromCfg ? all.findIndex((d) => d.dest === fromCfg.dest) : -1;
-  const bootedIdx = all.findIndex((d) => d.label.includes("booted"));
-  const defaultIdx = Math.max(0, cfgIdx, bootedIdx);
-  const chosen = await selectFromList(
-    all.map((d) => d.label),
-    {
-      header: `${pc.bold("Select a run destination")} ${pc.dim("(↑/↓ to move, Enter to confirm)")}`,
-      defaultIndex: defaultIdx,
-    },
-  );
+  const pinned = [lastIdx, cfgIdx].filter((i, k, a) => i >= 0 && a.indexOf(i) === k);
+  const order = [...pinned, ...all.map((_, i) => i).filter((i) => !pinned.includes(i))];
+
+  const marker = (i: number) =>
+    i === lastIdx ? pc.dim(" — last used") : i === cfgIdx ? pc.dim(" — default") : "";
+  const labels = order.map((i) => all[i]!.label + marker(i));
+  const defaultIdx =
+    pinned.length > 0
+      ? 0
+      : Math.max(
+          0,
+          order.findIndex((i) => all[i]!.label.includes("booted")),
+        );
+
+  const chosen = await selectFromList(labels, {
+    header: `${pc.bold("Select a run destination")} ${pc.dim("(↑/↓ to move, Enter to confirm)")}`,
+    defaultIndex: defaultIdx,
+  });
   if (chosen === null) throw new Error("destination selection cancelled");
-  return all[chosen]!;
+  return all[order[chosen]!]!;
 }
 
 // The STRAND_XCODE_* env a verb run needs, or {} when this isn't an xcode
@@ -353,7 +369,15 @@ export async function resolveDestination(opts: ResolveOptions): Promise<Destinat
 // env for every other adapter, so the verb commands stay generic.
 export async function xcodeEnvFor(
   manifest: ProjectManifest,
-  opts: { device?: string; platform?: string; interactive: boolean; verbose?: boolean },
+  opts: {
+    device?: string;
+    platform?: string;
+    interactive: boolean;
+    verbose?: boolean;
+    root?: string;
+    // Persist the chosen destination as this project's last-run device (dev).
+    remember?: boolean;
+  },
 ): Promise<NodeJS.ProcessEnv> {
   if (manifest.adapter !== "xcode" && !manifest.xcode) return {};
   const dest = await resolveDestination({
@@ -361,7 +385,16 @@ export async function xcodeEnvFor(
     flagDevice: opts.device,
     flagPlatform: opts.platform,
     interactive: opts.interactive && !opts.device && !opts.platform && !!process.stdin.isTTY,
+    root: opts.root,
   });
+  if (opts.remember && opts.root) {
+    await writeLastXcodeDest(opts.root, {
+      dest: dest.dest,
+      label: dest.label,
+      bootUdid: dest.bootUdid,
+      deviceUdid: dest.deviceUdid,
+    });
+  }
   const env: NodeJS.ProcessEnv = {
     STRAND_XCODE_DEST: dest.dest,
     STRAND_XCODE_QUIET: opts.verbose ? "" : "-quiet",

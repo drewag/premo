@@ -8,6 +8,7 @@ import {
   sanitizeProjectName,
 } from "./project.js";
 import { detectAdapter, readPackageJson } from "./adapters/index.js";
+import { ensureStrandGitignore } from "./local.js";
 import { gitRoot } from "./git.js";
 import { allocatePortBlock } from "./registry.js";
 import { log } from "./logger.js";
@@ -100,6 +101,7 @@ export async function adoptProject(root: string): Promise<ProjectManifest> {
 
   const manifest = ProjectManifest.parse(draft); // validate
   await saveProject(root, draft); // write the clean, un-defaulted version
+  await ensureStrandGitignore(root); // keep strand-local state out of git
 
   const detail = adapter
     ? `detected ${adapter.name}, ${detected.length} target(s)`
