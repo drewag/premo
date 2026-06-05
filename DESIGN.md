@@ -30,6 +30,7 @@ This works on projects strand never scaffolded — the Swift blog, `finances`, a
 4. **Agent-first, with a deterministic floor.** The hardest adoption cases are handled by a skill an agent executes; everything below that is deterministic CLI code.
 5. **git is assumed.** Affected-detection, deploy tracking, and worktrees all lean on git. A strand project is a git repo.
 6. **Every file is a normal file.** strand reads a `strand.json` and shells out to your real toolchain. Uninstalling it breaks nothing.
+7. **Every capability is a project-level contract.** A feature works when the project _declares what it needs_ — a verb command, a `shells` entry, a deploy command. Scaffolding and adapters are just ways to populate that contract; there is no "scaffolded-only" behavior. The same `strand.json` an adapter writes, a human can write by hand, and both behave identically.
 
 ### Non-goals (for now)
 
@@ -293,6 +294,7 @@ New, from the task-runner reframe:
 16. **strand owns a generic background-supervision layer** — detached process-group spawn + pidfile + logfile + group-kill — because we can't lean on Docker's lifecycle for host processes.
 17. **git is assumed.** Affected-detection, deploy, and worktrees all require a git repo.
 18. **Data-branches are out of scope** (§9.2); a stateful project opts in via tier-3 plumbing, designed separately.
+19. **Every capability is a project-level contract; scaffolding and adapters only populate it.** No feature branches on "is this a scaffolded project." `shell`, `deploy`, `open`, and the verbs all resolve from declared config (`commands`, `shells`, …). `strand new` and future adapters _write_ that config, but a hand-authored `strand.json` is first-class and behaves identically. When tempted to special-case scaffolded vs. adopted, define the contract instead and have scaffolding fulfill it.
 
 ---
 
@@ -311,15 +313,14 @@ How this relates to the task-runner spine: the verb layer works on **any** repo,
 ## 12. Phased roadmap
 
 - **v0.0 (shipped):** scaffolder skeleton — `doctor`, `new`, `dev`, `stop`, `list`, `ports`, `open`, `shell`; four strands; core modules (`project`, `strands`, `ports`, `compose`, `runtime`, `templater`, `env`, `logger`); unit + integration tests.
-- **v0.1 (the task-runner spine — current priority):**
+- **v0.1 (the task-runner spine — shipped):**
   - `core/git.ts` + `core/affected.ts` (the §4 keystone).
   - `strand.json` schema extension (`commands`, `targets`, `changeBase`, `affectedCommand`).
-  - `build`, `test` (affected-aware), `lint` (file-based, auto-fix).
+  - `build`, `test` (affected-aware), `lint` (whole-tree, auto-fix; per-file deferred).
   - `dev --background` + generic supervision; `stop` (group-kill) + `logs`.
-  - yarn-workspaces + package.json adapters; `strand adopt` (configure tier) + helpful not-implemented messages.
-  - **Dogfood target:** adopt `~/git/personal/finances` and one freshly-migrated Next.js project with only a `strand adopt`-generated config.
-- **v0.2:** `deploy` (git-ref tracking, change listing, single-env; multi-env spec in place). First real VPS deploy.
-- **v0.3:** worktree support (§9.1).
+  - yarn-workspaces + node-scripts adapters; `strand adopt` (auto-adopt on first touch) + helpful not-implemented messages; global port registry; `doctor` as the read-only wiring surface; project-aware grouped help; `shells` contract.
+- **v0.2 (shipped, pending first real VPS deploy):** `deploy` — `YYYY.MM.DD.N` version from release tags, per-target `deployed/<target>` ff-only advance + `release/<target>/<version>` tag pushed to origin, change listing, confirmation, single-env default with multi-env spec'd. Onboarded: drewag.me, wagnergroup.us, cyclingjourneys.com.
+- **v0.3:** worktree support (§9.1); per-file `lint`; the static-site deploy adapter (auto-discover the `deploy/deploy.sh` contract).
 - **Later:** skill tier (`SKILL.md` emission for novel stacks) + promotion tooling; revive scaffolder depth (§11) as warranted; data-branch design pass.
 
 ### Testing implications
