@@ -23,7 +23,10 @@ export const StrandOpen = z.object({
   url: z.string(),
 });
 
-export const StrandShell = z
+// A named interactive entry point. `compose-exec` runs the command inside a
+// docker compose service; `command` runs it directly. The same spec is used
+// whether a strand declares it or a project configures it under `shells`.
+export const ShellSpec = z
   .object({
     kind: z.enum(["compose-exec", "command"]),
     service: z.string().optional(),
@@ -33,6 +36,7 @@ export const StrandShell = z
   .refine((s) => s.kind !== "compose-exec" || !!s.service, {
     message: "shell.service is required when kind is 'compose-exec'",
   });
+export type ShellSpec = z.infer<typeof ShellSpec>;
 
 export const StrandManifest = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]*$/),
@@ -47,7 +51,7 @@ export const StrandManifest = z.object({
   claudeFragment: z.string().optional(),
   devCommand: z.string().optional(),
   open: StrandOpen.optional(),
-  shell: StrandShell.optional(),
+  shell: ShellSpec.optional(),
 });
 export type StrandManifest = z.infer<typeof StrandManifest>;
 
@@ -87,6 +91,9 @@ export const ProjectManifest = z.object({
   adapter: z.string().optional(),
   // URL `strand open` launches for adopted projects; ${PORT} is the allocated base.
   openUrl: z.string().optional(),
+  // Named interactive shells (e.g. `db` → psql). Populated by scaffolding,
+  // configurable by hand, and (later) discoverable by adapters.
+  shells: z.record(ShellSpec).default({}),
   commands: z.record(z.string()).default({}),
   targets: z.record(TargetConfig).default({}),
   changeBase: z.string().default("origin/main"),

@@ -3,12 +3,11 @@ import pc from "picocolors";
 import { VERBS, type Verb } from "../strand-api/types.js";
 import { inspectContext } from "../core/context.js";
 import { resolveTargets } from "../core/targets.js";
-import { resolveStrandSet } from "../core/strands.js";
 import { log } from "../core/logger.js";
 
 // Commands that support the day-to-day dev loop (shown as active alongside
 // whichever verbs are wired), versus strand-management commands. `shell` is
-// conditionally active — only when a scaffolded project provides one.
+// conditionally active — only when the project declares one.
 const PROJECT_HELPERS = ["open", "logs", "stop"];
 const META = ["doctor", "adopt", "ports", "list", "new"];
 
@@ -34,14 +33,7 @@ export async function printGroupedHelp(program: Command): Promise<void> {
     if (insp.adopted || insp.adapterName) projectName = insp.manifest.name;
     const targets = await resolveTargets(insp.root, insp.manifest);
     for (const v of VERBS) if (targets.some((t) => t.commands[v])) wired.add(v);
-    if (insp.manifest.strands?.length) {
-      try {
-        const strands = await resolveStrandSet(insp.manifest.strands);
-        shellAvailable = strands.some((s) => !!s.manifest.shell);
-      } catch {
-        /* strand set unresolvable — leave shell inactive */
-      }
-    }
+    shellAvailable = Object.keys(insp.manifest.shells).length > 0;
   } catch {
     /* not in a usable project — every verb shows as not wired */
   }

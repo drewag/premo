@@ -9,7 +9,7 @@ import { resolveStrandSet } from "../../core/strands.js";
 import { allocatePorts, DEFAULT_BLOCK, defaultBaseForProject } from "../../core/ports.js";
 import { generateCompose } from "../../core/compose.js";
 import { renderTree, renderString } from "../../core/templater.js";
-import { ProjectManifest, StrandManifest } from "../../strand-api/types.js";
+import { ProjectManifest, StrandManifest, type ShellSpec } from "../../strand-api/types.js";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_TEMPLATE = path.resolve(DIR, "../../../templates/root");
@@ -50,11 +50,19 @@ export function register(program: Command): void {
       );
       log.dim(`  → port base ${base} (${opts.base ? "override" : "hash-derived"})`);
 
+      // Lift each strand's declared shell into the project's generic `shells`
+      // contract — scaffolding is just one way to populate it.
+      const shells: Record<string, ShellSpec> = {};
+      for (const s of resolved) {
+        if (s.manifest.shell) shells[s.manifest.name] = s.manifest.shell;
+      }
+
       const manifest: ProjectManifest = ProjectManifest.parse({
         name,
         version: "0",
         strands: finalStrandNames,
         ports: { base, block: DEFAULT_BLOCK },
+        ...(Object.keys(shells).length > 0 ? { shells } : {}),
       });
 
       log.step(`Creating ${projectDir}`);
