@@ -85,6 +85,8 @@ export const ProjectManifest = z.object({
 
   // --- task-runner fields (all optional; additive for adopted projects) ---
   adapter: z.string().optional(),
+  // URL `strand open` launches for adopted projects; ${PORT} is the allocated base.
+  openUrl: z.string().optional(),
   commands: z.record(z.string()).default({}),
   targets: z.record(TargetConfig).default({}),
   changeBase: z.string().default("origin/main"),
