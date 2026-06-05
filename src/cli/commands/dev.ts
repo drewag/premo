@@ -18,7 +18,7 @@ const PREFIX_COLORS = [pc.cyan, pc.magenta, pc.yellow, pc.green, pc.blue];
 export function register(program: Command): void {
   program
     .command("dev")
-    .description("Run the project locally in dev mode.")
+    .description("Run the project locally; --background to detach.")
     .argument("[target]", "run a single target")
     .option("--background", "run detached; manage with `strand logs` / `strand stop`")
     .action(async (target: string | undefined, opts: { background?: boolean }) => {

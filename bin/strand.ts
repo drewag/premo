@@ -1,5 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { buildProgram } from "../src/cli/registry.js";
+import { isTopLevelHelp, printGroupedHelp } from "../src/cli/help.js";
 import { register as doctor } from "../src/cli/commands/doctor.js";
 import { register as newCmd } from "../src/cli/commands/new.js";
 import { register as adopt } from "../src/cli/commands/adopt.js";
@@ -29,4 +30,9 @@ const program = buildProgram([
   open,
   shell,
 ]);
-await program.parseAsync(process.argv);
+
+if (isTopLevelHelp(process.argv)) {
+  await printGroupedHelp(program);
+} else {
+  await program.parseAsync(process.argv);
+}
