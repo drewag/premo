@@ -74,15 +74,24 @@ export async function adoptProject(root: string): Promise<ProjectManifest> {
   const targets: Record<string, { dirs: string[] }> = {};
   for (const t of detected) targets[t.name] = { dirs: t.dirs };
 
+  // Configure-tier adapters (e.g. xcode) bake concrete commands + extra config.
+  const baked = adapter?.adopt ? await adapter.adopt(root) : {};
+
   const draft: ProjectManifestInput = {
     name,
     version: "0",
     ...(adapter ? { adapter: adapter.name } : {}),
     targets,
+    ...baked,
   };
 
   let portInfo = "";
-  const serves = adapter ? detected.some((t) => adapter.command("dev", t, root) !== null) : false;
+  // A dev command that binds an HTTP port earns a port block. Native apps (xcode)
+  // run a process but don't serve, so they skip allocation.
+  const serves =
+    adapter?.name !== "xcode" &&
+    !!adapter &&
+    detected.some((t) => adapter.command("dev", t, root) !== null);
   if (serves) {
     const alloc = await allocatePortBlock(root, name);
     draft.ports = { base: alloc.base, block: alloc.block };

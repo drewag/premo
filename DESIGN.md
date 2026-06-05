@@ -222,11 +222,12 @@ See §6.1 — they exist to manage `dev --background` and read from the same `.s
 
 Built-in detectors that supply default verb commands (and enumerate targets) with zero config:
 
-- **yarn-workspaces** (first, matches the reference projects) — reads root `package.json` `workspaces`; each workspace is a target with `dirs: ["<path>/"]`; verb commands map to `yarn workspace <t> <script>` when the script exists.
+- **xcode** (first; native Apple apps) — detects a root `.xcodeproj`/`.xcworkspace`; one target per project, `strand test` runs the whole scheme (unit + UI). Its `adopt()` hook (see below) runs `xcodebuild -list` once to bake the scheme, bundle id, a pinned default simulator (`xcode.defaultDestination`), and concrete `dev`/`build`/`test` commands. The verbs are otherwise static strings; the one runtime variable — _which simulator/device to run on_ — is resolved per-invocation (the `--device`/`--platform` flag → the pinned default → an interactive picker on a TTY) and injected as `STRAND_XCODE_DEST`, the single seam through which device choice reaches the otherwise-static command. `dev` builds → boots the sim → installs → launches with streamed logs in the foreground (macOS opens the built `.app`).
+- **yarn-workspaces** (matches the reference projects) — reads root `package.json` `workspaces`; each workspace is a target with `dirs: ["<path>/"]`; verb commands map to `yarn workspace <t> <script>` when the script exists.
 - **package.json scripts** (single-package node) — maps verbs to `yarn <script>` / `npm run <script>` when present.
 - Future: Cargo, Go, Make passthrough, etc. — each new adapter fills a column of the (verb × project-type) matrix.
 
-`strand adopt` is the **configure tier**: run the best-matching adapter's detection, then _write_ the resolved `commands` + `targets` into `strand.json` so the user can edit a concrete starting point instead of relying on live magic. The **skill tier** emits a `SKILL.md` for an agent when detection can't produce a working config.
+`strand adopt` is the **configure tier**: run the best-matching adapter's detection, then _write_ the resolved `commands` + `targets` into `strand.json` so the user can edit a concrete starting point instead of relying on live magic. An adapter may implement an optional `adopt(root)` hook to contribute baked config (the xcode adapter uses this to compile its commands + `xcode` block, exactly the "configure tier produces concrete output" property of §3). The **skill tier** emits a `SKILL.md` for an agent when detection can't produce a working config.
 
 ---
 

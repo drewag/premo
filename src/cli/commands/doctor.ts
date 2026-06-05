@@ -58,6 +58,17 @@ const hostChecks: Check[] = [
       }
     },
   },
+  {
+    name: "xcode tools",
+    run: async () => {
+      try {
+        const { stdout } = await execa("xcodebuild", ["-version"]);
+        return { ok: true, detail: stdout.split("\n")[0]!.trim() };
+      } catch {
+        return { ok: false, detail: "not installed (only needed for xcode projects)" };
+      }
+    },
+  },
 ];
 
 export function register(program: Command): void {

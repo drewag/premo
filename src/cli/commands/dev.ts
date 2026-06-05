@@ -11,6 +11,7 @@ import { writePortsManifest } from "../../core/runtime.js";
 import { resolveTargets } from "../../core/targets.js";
 import { spawnDetached } from "../../core/supervise.js";
 import { log } from "../../core/logger.js";
+import { resolveXcodeEnv } from "../xcode-env.js";
 import { writeFile } from "node:fs/promises";
 
 const PREFIX_COLORS = [pc.cyan, pc.magenta, pc.yellow, pc.green, pc.blue];
@@ -21,14 +22,27 @@ export function register(program: Command): void {
     .description("Run the project locally; --background to detach.")
     .argument("[target]", "run a single target")
     .option("--background", "run detached; manage with `strand logs` / `strand stop`")
-    .action(async (target: string | undefined, opts: { background?: boolean }) => {
-      const ctx = await ensureContext(process.cwd());
-      if (ctx.manifest.strands?.length) {
-        await runScaffoldedDev(ctx);
-        return;
-      }
-      await runAdoptedDev(ctx, target, !!opts.background);
-    });
+    .option("--device <name>", "destination device/simulator (xcode projects)")
+    .option("--platform <name>", "destination platform: ios | macos | visionos (xcode projects)")
+    .action(
+      async (
+        target: string | undefined,
+        opts: { background?: boolean; device?: string; platform?: string },
+      ) => {
+        const ctx = await ensureContext(process.cwd());
+        if (ctx.manifest.strands?.length) {
+          await runScaffoldedDev(ctx);
+          return;
+        }
+        // Prompt for a destination interactively, unless detaching.
+        const xcodeEnv = await resolveXcodeEnv(ctx, opts, !opts.background);
+        if (xcodeEnv === null) {
+          process.exitCode = 1;
+          return;
+        }
+        await runAdoptedDev(ctx, target, !!opts.background, xcodeEnv);
+      },
+    );
 }
 
 // --- scaffolded projects: compose services + multi-strand host processes ---
@@ -123,6 +137,7 @@ async function runAdoptedDev(
   ctx: Context,
   targetArg: string | undefined,
   background: boolean,
+  extraEnv: NodeJS.ProcessEnv = {},
 ): Promise<void> {
   const targets = await resolveTargets(ctx.root, ctx.manifest);
   let devTargets = targets.filter((t) => t.commands.dev);
@@ -149,7 +164,7 @@ async function runAdoptedDev(
     return;
   }
 
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
   if (ctx.manifest.ports) env.PORT = String(ctx.manifest.ports.base);
 
   if (background) {

@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { Verb } from "../../strand-api/types.js";
+import type { ProjectManifestInput, Verb } from "../../strand-api/types.js";
 import { yarnWorkspacesAdapter } from "./yarn-workspaces.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
+import { xcodeAdapter } from "./xcode.js";
 
 // A target as discovered by an adapter, before it's merged with manifest config.
 export interface DetectedTarget {
@@ -19,10 +20,14 @@ export interface Adapter {
   targets(root: string): Promise<DetectedTarget[]>;
   // The command to run `verb` in `target`, or null if the target can't.
   command(verb: Verb, target: DetectedTarget, root: string): string | null;
+  // Optional configure-tier hook: inspect the repo and contribute concrete
+  // manifest fields (e.g. baked `commands`, an `xcode` block) for `strand adopt`
+  // to write. Adapters that resolve everything live (the node ones) omit this.
+  adopt?(root: string): Promise<Partial<ProjectManifestInput>>;
 }
 
 // Order matters: more specific adapters first.
-const ADAPTERS: Adapter[] = [yarnWorkspacesAdapter, nodeScriptsAdapter];
+const ADAPTERS: Adapter[] = [xcodeAdapter, yarnWorkspacesAdapter, nodeScriptsAdapter];
 
 export async function detectAdapter(root: string): Promise<Adapter | null> {
   for (const adapter of ADAPTERS) {

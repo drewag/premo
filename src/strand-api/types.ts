@@ -73,6 +73,28 @@ export const DeployConfig = z.object({
   envs: z.array(z.string()).default(["prod"]),
 });
 
+// Where to run an Xcode build. `platform` selects the SDK/run path; `deviceName`
+// + `os` pin a specific simulator (mirrors odo/email's pinned-sim convention).
+// strand resolves this (or a `--device` override / interactive pick) into an
+// `xcodebuild -destination` value injected as STRAND_XCODE_DEST. See core/xcode.ts.
+export const XcodeDestination = z.object({
+  platform: z.enum(["ios-simulator", "ios-device", "macos", "visionos-simulator"]),
+  deviceName: z.string().optional(), // e.g. "iPhone 17 Pro"
+  os: z.string().optional(), // e.g. "26.2"
+});
+export type XcodeDestination = z.infer<typeof XcodeDestination>;
+
+// Xcode project facts baked by `strand adopt` so the verbs need no live
+// `xcodebuild -list` on every run. Exactly one of workspace/project is set.
+export const XcodeConfig = z.object({
+  workspace: z.string().optional(), // path to .xcworkspace, relative to root
+  project: z.string().optional(), // path to .xcodeproj, relative to root
+  scheme: z.string(),
+  bundleId: z.string().optional(),
+  defaultDestination: XcodeDestination.optional(),
+});
+export type XcodeConfig = z.infer<typeof XcodeConfig>;
+
 export const ProjectManifest = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]*$/),
   version: z.string().default("0"),
@@ -99,6 +121,8 @@ export const ProjectManifest = z.object({
   changeBase: z.string().default("origin/main"),
   affectedCommand: z.string().nullable().optional(),
   deploy: DeployConfig.optional(),
+  // Present when the xcode adapter has adopted this project (§ xcode).
+  xcode: XcodeConfig.optional(),
   worktree: z.object({ carry: z.array(z.string()).default([]) }).optional(),
 });
 export type ProjectManifest = z.infer<typeof ProjectManifest>;

@@ -1,0 +1,91 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import type { ProjectManifestInput, Verb } from "../../strand-api/types.js";
+import { sanitizeProjectName } from "../project.js";
+import { log } from "../logger.js";
+import {
+  buildSettings,
+  findXcodeProject,
+  findXcodeProjectSync,
+  listSchemes,
+  pickDefaultDestination,
+  projectFlag,
+  xcodeCommands,
+} from "../xcode.js";
+import { type Adapter, type DetectedTarget } from "./index.js";
+
+// Native Apple project (.xcodeproj / .xcworkspace). One target per project;
+// `strand test` runs the whole scheme (unit + UI suites). The scheme, bundle id,
+// and a default simulator are resolved once at adopt time and baked into
+// strand.json, so the verbs never shell out to `xcodebuild -list` on every run.
+export const xcodeAdapter: Adapter = {
+  name: "xcode",
+
+  async detect(root: string): Promise<boolean> {
+    return (await findXcodeProject(root)) !== null;
+  },
+
+  async targets(root: string): Promise<DetectedTarget[]> {
+    const proj = await findXcodeProject(root);
+    if (!proj) return [];
+    return [{ name: sanitizeProjectName(proj.name), dirs: ["."], cwd: root, scripts: {} }];
+  },
+
+  // Best-effort live commands (used for the `doctor` preview before adopt bakes
+  // concrete ones). Guesses the scheme as the project basename — correct for the
+  // common single-scheme case; the first real verb auto-adopts and replaces these.
+  command(verb: Verb, _target: DetectedTarget, root: string): string | null {
+    const proj = findXcodeProjectSync(root);
+    if (!proj) return null;
+    const cmds = xcodeCommands(projectFlag(proj), proj.name);
+    switch (verb) {
+      case "dev":
+        return cmds.dev;
+      case "build":
+        return cmds.build;
+      case "test":
+        return cmds.test;
+      case "lint":
+        return existsSync(path.join(root, ".swiftlint.yml")) ? "swiftlint" : null;
+      case "deploy":
+        return null;
+    }
+  },
+
+  // Configure tier (DESIGN §3): inspect the project once and emit a concrete
+  // `xcode` block + baked verb commands for strand.json.
+  async adopt(root: string): Promise<Partial<ProjectManifestInput>> {
+    const proj = await findXcodeProject(root);
+    if (!proj) return {};
+
+    const schemes = await listSchemes(root, proj);
+    const scheme = schemes.includes(proj.name) ? proj.name : (schemes[0] ?? proj.name);
+    if (schemes.length === 0) {
+      log.warn(
+        `No shared scheme found. Share one in Xcode (Product → Scheme → Manage Schemes → ` +
+          `check "Shared") so CLI builds are reproducible; using "${scheme}" for now.`,
+      );
+    }
+
+    const { bundleId, platforms } = await buildSettings(root, proj, scheme);
+    const defaultDestination = await pickDefaultDestination(platforms);
+
+    const cmds = xcodeCommands(projectFlag(proj), scheme);
+    const commands: Record<string, string> = {
+      dev: cmds.dev,
+      build: cmds.build,
+      test: cmds.test,
+    };
+    if (existsSync(path.join(root, ".swiftlint.yml"))) commands.lint = "swiftlint";
+
+    return {
+      xcode: {
+        [proj.kind]: proj.path,
+        scheme,
+        ...(bundleId ? { bundleId } : {}),
+        ...(defaultDestination ? { defaultDestination } : {}),
+      },
+      commands,
+    };
+  },
+};

@@ -11,6 +11,8 @@ export interface VerbOptions {
   all?: boolean;
   /** narrow to affected targets by default (build/test); false ⇒ whole tree (lint). */
   affected: boolean;
+  /** extra env merged into each command (e.g. STRAND_XCODE_DEST). */
+  env?: NodeJS.ProcessEnv;
 }
 
 interface Selection {
@@ -86,7 +88,13 @@ export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Prom
       continue;
     }
     log.step(`${verb} ${t.name}: ${cmd}`);
-    const res = await execa(cmd, { cwd: t.cwd, shell: true, stdio: "inherit", reject: false });
+    const res = await execa(cmd, {
+      cwd: t.cwd,
+      shell: true,
+      stdio: "inherit",
+      reject: false,
+      env: opts.env,
+    });
     if (res.exitCode !== 0) {
       log.error(`${verb} ${t.name} failed (exit ${res.exitCode}).`);
       process.exitCode = res.exitCode ?? 1;
