@@ -98,6 +98,8 @@ describe("xcodeCommands / adapter.command", () => {
     // Product path comes from build settings (destination-accurate), not `find`.
     expect(cmds.dev).toContain("-showBuildSettings");
     expect(cmds.dev).not.toContain("find ");
+    // Build verbosity is controlled by the injected $STRAND_XCODE_QUIET.
+    expect(cmds.dev).toContain("$STRAND_XCODE_QUIET build");
   });
 
   it("only offers lint when a .swiftlint.yml exists; never a deploy default", async () => {
@@ -220,6 +222,21 @@ describe("xcodeEnvFor", () => {
     expect(env.STRAND_XCODE_BOOT_UDID).toBe("UDID-IPHONE");
     expect(env.STRAND_XCODE_BUNDLE_ID).toBe("drewag.Awooga");
     expect(env.STRAND_XCODE_DEVICE_UDID).toBeUndefined();
+  });
+
+  it("quiets the build by default and unquiets it with verbose", async () => {
+    stubSimctl();
+    const manifest = xcodeManifest({
+      xcode: {
+        project: "Awooga.xcodeproj",
+        scheme: "Awooga",
+        defaultDestination: { platform: "ios-simulator", deviceName: "iPhone 17 Pro", os: "26.2" },
+      },
+    });
+    expect((await xcodeEnvFor(manifest, { interactive: false })).STRAND_XCODE_QUIET).toBe("-quiet");
+    expect(
+      (await xcodeEnvFor(manifest, { interactive: false, verbose: true })).STRAND_XCODE_QUIET,
+    ).toBe("");
   });
 
   it("exports STRAND_XCODE_DEVICE_UDID (not BOOT_UDID) for a physical device", async () => {

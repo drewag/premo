@@ -5,6 +5,7 @@ import { log } from "../core/logger.js";
 export interface DestFlags {
   device?: string;
   platform?: string;
+  verbose?: boolean;
 }
 
 // Resolve the STRAND_XCODE_* env for a verb run. A no-op (empty env) for
@@ -19,6 +20,7 @@ export async function resolveXcodeEnv(
     return await xcodeEnvFor(ctx.manifest, {
       device: flags.device,
       platform: flags.platform,
+      verbose: flags.verbose,
       interactive,
     });
   } catch (err) {

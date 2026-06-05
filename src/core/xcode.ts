@@ -120,7 +120,10 @@ export function xcodeCommands(
   const dev = [
     `set -e`,
     `DD=.strand/xcode-dd`,
-    `${built} build`,
+    // Quiet by default ($STRAND_XCODE_QUIET = -quiet): only warnings/errors during
+    // the build, then the running app's logs stream as usual. `dev -v` clears it.
+    `if [ -n "$STRAND_XCODE_QUIET" ]; then echo "▸ Building… (pass -v for full xcodebuild logs)"; fi`,
+    `${built} $STRAND_XCODE_QUIET build`,
     // Resolve the exact product for THIS destination from build settings, so a
     // stale simulator build is never installed on a device (or vice-versa) —
     // both can coexist under Build/Products as Debug-iphone{simulator,os}.
@@ -344,11 +347,13 @@ export async function resolveDestination(opts: ResolveOptions): Promise<Destinat
 
 // The STRAND_XCODE_* env a verb run needs, or {} when this isn't an xcode
 // project. Resolves the destination (flag → default → optional interactive pick)
-// and exposes it (plus the bundle id) to the baked commands. Returns the empty
+// and exposes it (plus the bundle id) to the baked commands. STRAND_XCODE_QUIET
+// carries `-quiet` by default so `dev` doesn't flood the terminal with build
+// output (only warnings/errors show); `verbose` clears it. Returns the empty
 // env for every other adapter, so the verb commands stay generic.
 export async function xcodeEnvFor(
   manifest: ProjectManifest,
-  opts: { device?: string; platform?: string; interactive: boolean },
+  opts: { device?: string; platform?: string; interactive: boolean; verbose?: boolean },
 ): Promise<NodeJS.ProcessEnv> {
   if (manifest.adapter !== "xcode" && !manifest.xcode) return {};
   const dest = await resolveDestination({
@@ -357,7 +362,10 @@ export async function xcodeEnvFor(
     flagPlatform: opts.platform,
     interactive: opts.interactive && !opts.device && !opts.platform && !!process.stdin.isTTY,
   });
-  const env: NodeJS.ProcessEnv = { STRAND_XCODE_DEST: dest.dest };
+  const env: NodeJS.ProcessEnv = {
+    STRAND_XCODE_DEST: dest.dest,
+    STRAND_XCODE_QUIET: opts.verbose ? "" : "-quiet",
+  };
   if (dest.bootUdid) env.STRAND_XCODE_BOOT_UDID = dest.bootUdid;
   if (dest.deviceUdid) env.STRAND_XCODE_DEVICE_UDID = dest.deviceUdid;
   if (manifest.xcode?.bundleId) env.STRAND_XCODE_BUNDLE_ID = manifest.xcode.bundleId;
