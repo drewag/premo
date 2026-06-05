@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+// The closed task-runner verb vocabulary. See DESIGN.md §2.
+export const VERBS = ["dev", "build", "test", "lint", "deploy"] as const;
+export type Verb = (typeof VERBS)[number];
+
 export const StrandPortDecl = z.object({
   name: z.string().regex(/^[A-Z][A-Z0-9_]*$/, "port name must be SCREAMING_SNAKE"),
   offset: z.number().int().min(0).max(99),
@@ -47,18 +51,47 @@ export const StrandManifest = z.object({
 });
 export type StrandManifest = z.infer<typeof StrandManifest>;
 
+// A target is a sub-unit of a repo (a workspace, a package, or a strand).
+// `dirs` are the path prefixes it owns; `affects` are other targets a change
+// here also marks affected (fan-out); `affectsExcept` are path-prefix
+// exceptions to that fan-out. `commands` are per-target verb overrides.
+export const TargetConfig = z.object({
+  dirs: z.array(z.string()).default([]),
+  affects: z.array(z.string()).default([]),
+  affectsExcept: z.array(z.string()).default([]),
+  commands: z.record(z.string()).default({}),
+});
+export type TargetConfig = z.infer<typeof TargetConfig>;
+
+export const DeployConfig = z.object({
+  // Single env ⇒ refs are `deployed/<target>`; multiple ⇒ `deployed/<env>/<target>`.
+  envs: z.array(z.string()).default(["prod"]),
+  targets: z.record(z.object({ command: z.string() })).default({}),
+});
+
 export const ProjectManifest = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]*$/),
   version: z.string().default("0"),
-  strands: z.array(z.string()).min(1),
-  ports: z.object({
-    base: z.number().int().min(1024).max(65000),
-    block: z.number().int().min(20).max(1000).default(100),
-  }),
-  data: z
+
+  // --- scaffolder fields (optional; present only in `strand new` projects) ---
+  strands: z.array(z.string()).min(1).optional(),
+  ports: z
     .object({
-      dir: z.string(),
+      base: z.number().int().min(1024).max(65000),
+      block: z.number().int().min(20).max(1000).default(100),
     })
     .optional(),
+  data: z.object({ dir: z.string() }).optional(),
+
+  // --- task-runner fields (all optional; additive for adopted projects) ---
+  adapter: z.string().optional(),
+  commands: z.record(z.string()).default({}),
+  targets: z.record(TargetConfig).default({}),
+  changeBase: z.string().default("origin/main"),
+  affectedCommand: z.string().nullable().optional(),
+  deploy: DeployConfig.optional(),
+  worktree: z.object({ carry: z.array(z.string()).default([]) }).optional(),
 });
 export type ProjectManifest = z.infer<typeof ProjectManifest>;
+// Input shape (defaults optional) — for hand-built manifests written to disk.
+export type ProjectManifestInput = z.input<typeof ProjectManifest>;

@@ -15,6 +15,16 @@ export function register(program: Command): void {
         process.exit(1);
       }
       const manifest = await loadProject(root);
+      if (!manifest.ports) {
+        log.info(`${manifest.name}  (no ports allocated)`);
+        return;
+      }
+      if (!manifest.strands?.length) {
+        // Adopted project: a single allocated block, no per-strand offsets.
+        log.info(`${manifest.name}  (base ${manifest.ports.base}, block ${manifest.ports.block})`);
+        log.dim(`  PORT=${manifest.ports.base}`);
+        return;
+      }
       const resolved = await resolveStrandSet(manifest.strands);
       const ports = allocatePorts(
         manifest.ports.base,

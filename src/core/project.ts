@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { ProjectManifest } from "../strand-api/types.js";
+import { ProjectManifest, type ProjectManifestInput } from "../strand-api/types.js";
 
 export const PROJECT_FILE = "strand.json";
 
@@ -14,9 +14,29 @@ export async function loadProject(dir: string): Promise<ProjectManifest> {
   return ProjectManifest.parse(raw);
 }
 
-export async function saveProject(dir: string, manifest: ProjectManifest): Promise<void> {
+export async function loadProjectIfExists(dir: string): Promise<ProjectManifest | null> {
+  const file = path.join(dir, PROJECT_FILE);
+  if (!existsSync(file)) return null;
+  return loadProject(dir);
+}
+
+export async function saveProject(dir: string, manifest: ProjectManifestInput): Promise<void> {
   const file = path.join(dir, PROJECT_FILE);
   await writeFile(file, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+}
+
+// Sanitize an arbitrary directory/package name into the kebab-case the
+// manifest's `name` field (and Docker/compose project names) require.
+export function sanitizeProjectName(raw: string): string {
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/^@/, "")
+    .replace(/[/]/g, "-")
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/^[^a-z]+/, "");
+  return cleaned || "project";
 }
 
 export function findProjectRoot(startDir: string): string | null {

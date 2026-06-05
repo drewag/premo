@@ -96,6 +96,10 @@ async function loadContext(): Promise<ShellContext> {
     process.exit(1);
   }
   const manifest = await loadProject(root);
+  if (!manifest.strands?.length || !manifest.ports) {
+    log.error("`shell` is only available in scaffolded strand projects.");
+    process.exit(1);
+  }
   const resolved = await resolveStrandSet(manifest.strands);
   const ports = allocatePorts(
     manifest.ports.base,

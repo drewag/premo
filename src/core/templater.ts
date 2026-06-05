@@ -6,7 +6,7 @@ export type TemplateVars = Record<string, string>;
 const TOKEN_RE = /\{\{(\w+)\}\}/g;
 
 export function renderString(input: string, vars: TemplateVars): string {
-  return input.replace(TOKEN_RE, (match, key) => {
+  return input.replace(TOKEN_RE, (_match, key) => {
     if (!(key in vars)) {
       throw new Error(`Template token {{${key}}} has no value`);
     }
