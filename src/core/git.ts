@@ -18,7 +18,7 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
   return (await gitRoot(cwd)) !== null;
 }
 
-async function refExists(root: string, ref: string): Promise<boolean> {
+export async function refExists(root: string, ref: string): Promise<boolean> {
   return (await git(root, ["rev-parse", "--verify", "--quiet", ref])) !== null;
 }
 
@@ -70,4 +70,73 @@ export async function changedFiles(root: string, configuredBase: string): Promis
   if (status) for (const f of parsePorcelain(status)) set.add(f);
 
   return { files: [...set], base };
+}
+
+// --- deploy ref/tag bookkeeping ---
+
+export async function headCommit(root: string): Promise<string | null> {
+  const out = await git(root, ["rev-parse", "HEAD"]);
+  return out?.trim() || null;
+}
+
+export async function currentBranch(root: string): Promise<string | null> {
+  const out = await git(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  return out?.trim() || null;
+}
+
+export async function isDirty(root: string): Promise<boolean> {
+  const out = await git(root, ["status", "--porcelain"]);
+  return !!out && out.trim().length > 0;
+}
+
+export async function fetchOrigin(root: string): Promise<void> {
+  await git(root, ["fetch", "origin", "--tags"]);
+}
+
+// Commits in `tip` not reachable from `base`, newest first.
+export async function logRange(
+  root: string,
+  base: string,
+  tip = "HEAD",
+): Promise<{ hash: string; subject: string }[]> {
+  const out = await git(root, ["log", `${base}..${tip}`, "--format=%h%x09%s"]);
+  if (!out) return [];
+  return out
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const tab = line.indexOf("\t");
+      return { hash: line.slice(0, tab), subject: line.slice(tab + 1) };
+    });
+}
+
+export async function isAncestor(
+  root: string,
+  ancestor: string,
+  descendant: string,
+): Promise<boolean> {
+  try {
+    await execa("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd: root });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function advanceBranchRef(
+  root: string,
+  branch: string,
+  commit: string,
+): Promise<void> {
+  await execa("git", ["update-ref", `refs/heads/${branch}`, commit], { cwd: root });
+}
+
+export async function createTag(root: string, tag: string, commit: string): Promise<void> {
+  await execa("git", ["tag", tag, commit], { cwd: root });
+}
+
+// Push the given refs (branch names and/or tags) to origin. Returns false if the
+// push failed (e.g. no remote) so the caller can fall back to a local record.
+export async function pushRefs(root: string, refs: string[]): Promise<boolean> {
+  return (await git(root, ["push", "origin", ...refs])) !== null;
 }

@@ -148,7 +148,7 @@ function printGaps(targets: Target[]): void {
   }
   for (const v of unwired) {
     if (v === "deploy") {
-      log.dim("  deploy — not yet implemented (fast-follow).");
+      log.dim("  deploy — set commands.deploy in strand.json to enable.");
     } else {
       log.dim(`  ${v} — no ${v} script found; add one, or set commands.${v} in strand.json.`);
     }

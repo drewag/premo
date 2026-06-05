@@ -71,7 +71,7 @@ export async function printGroupedHelp(program: Command): Promise<void> {
 }
 
 function inactiveReason(v: Verb): string {
-  if (v === "deploy") return "not yet implemented (fast-follow)";
+  if (v === "deploy") return "no deploy command — set commands.deploy in strand.json";
   return `no ${v} command — add a ${v} script or set commands.${v}`;
 }
 

@@ -8,6 +8,7 @@ import { register as dev } from "../src/cli/commands/dev.js";
 import { register as build } from "../src/cli/commands/build.js";
 import { register as test } from "../src/cli/commands/test.js";
 import { register as lint } from "../src/cli/commands/lint.js";
+import { register as deploy } from "../src/cli/commands/deploy.js";
 import { register as stop } from "../src/cli/commands/stop.js";
 import { register as logs } from "../src/cli/commands/logs.js";
 import { register as list } from "../src/cli/commands/list.js";
@@ -23,6 +24,7 @@ const program = buildProgram([
   build,
   test,
   lint,
+  deploy,
   stop,
   logs,
   list,

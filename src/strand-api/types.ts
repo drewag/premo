@@ -69,8 +69,8 @@ export type TargetConfig = z.infer<typeof TargetConfig>;
 
 export const DeployConfig = z.object({
   // Single env ⇒ refs are `deployed/<target>`; multiple ⇒ `deployed/<env>/<target>`.
+  // The deploy command itself resolves through `commands.deploy` like other verbs.
   envs: z.array(z.string()).default(["prod"]),
-  targets: z.record(z.object({ command: z.string() })).default({}),
 });
 
 export const ProjectManifest = z.object({
