@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
@@ -15,16 +15,6 @@ import {
 // dev server. One target at the repo root, kind "command" (inherited-TTY dev, no
 // port). build/test/lint defer to package.json scripts; `dev` runs the tool from
 // source so `premo dev -- <args>` invokes it with passthrough.
-
-function readPackageJsonSync(root: string): PackageJson | null {
-  const file = path.join(root, "package.json");
-  if (!existsSync(file)) return null;
-  try {
-    return JSON.parse(readFileSync(file, "utf8")) as PackageJson;
-  } catch {
-    return null;
-  }
-}
 
 // Resolve the command that runs the CLI in dev. Best-effort, shared by the live
 // `command()` preview and the `adopt()` bake:
@@ -73,10 +63,10 @@ export const cliAdapter: Adapter = {
     return [{ name, dirs: ["."], cwd: root, scripts: pkg.scripts ?? {}, kind: "command" }];
   },
 
-  command(verb: Verb, target: DetectedTarget, root: string): string | null {
+  async command(verb: Verb, target: DetectedTarget, root: string): Promise<string | null> {
     switch (verb) {
       case "dev": {
-        const pkg = readPackageJsonSync(root);
+        const pkg = await readPackageJson(root);
         return pkg ? resolveCliDev(root, pkg) : null;
       }
       case "deploy":

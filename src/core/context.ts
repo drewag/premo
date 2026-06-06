@@ -93,12 +93,15 @@ export async function adoptProject(
   let portInfo = "";
   // A dev command that binds an HTTP port earns a port block. Native apps (xcode)
   // and command-style CLIs run a process but don't serve, so they skip allocation.
-  const serves =
-    adapter?.name !== "xcode" &&
-    !!adapter &&
-    detected.some(
-      (t) => (t.kind ?? "service") === "service" && adapter.command("dev", t, root) !== null,
-    );
+  let serves = false;
+  if (adapter && adapter.name !== "xcode") {
+    for (const t of detected) {
+      if ((t.kind ?? "service") === "service" && (await adapter.command("dev", t, root)) !== null) {
+        serves = true;
+        break;
+      }
+    }
+  }
   if (serves) {
     const alloc = await allocatePortBlock(root, name);
     draft.ports = { base: alloc.base, block: alloc.block };

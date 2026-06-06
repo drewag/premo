@@ -66,7 +66,7 @@ export const yarnWorkspacesAdapter: Adapter = {
     return targets;
   },
 
-  command(verb: Verb, target: DetectedTarget, root: string): string | null {
+  async command(verb: Verb, target: DetectedTarget, root: string): Promise<string | null> {
     // Run from the workspace dir itself, so `yarn <script>` resolves to it.
     return scriptCommandForVerb(verb, target.scripts, detectPackageManager(root));
   },

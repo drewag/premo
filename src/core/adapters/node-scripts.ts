@@ -20,7 +20,7 @@ export const nodeScriptsAdapter: Adapter = {
     return [{ name, dirs: ["."], cwd: root, scripts: pkg.scripts ?? {} }];
   },
 
-  command(verb: Verb, target: DetectedTarget, root: string): string | null {
+  async command(verb: Verb, target: DetectedTarget, root: string): Promise<string | null> {
     return scriptCommandForVerb(verb, target.scripts, detectPackageManager(root));
   },
 };

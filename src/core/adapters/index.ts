@@ -21,7 +21,7 @@ export interface Adapter {
   detect(root: string): Promise<boolean>;
   targets(root: string): Promise<DetectedTarget[]>;
   // The command to run `verb` in `target`, or null if the target can't.
-  command(verb: Verb, target: DetectedTarget, root: string): string | null;
+  command(verb: Verb, target: DetectedTarget, root: string): Promise<string | null>;
   // Optional configure-tier hook: inspect the repo and contribute concrete
   // manifest fields (e.g. baked `commands`, an `xcode` block) for `premo adopt`
   // to write. Adapters that resolve everything live (the node ones) omit this.

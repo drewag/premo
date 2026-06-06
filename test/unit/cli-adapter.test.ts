@@ -46,9 +46,9 @@ describe("cli adapter", () => {
       scripts: { build: "tsc", test: "vitest", lint: "eslint ." },
     });
     const [t] = await cliAdapter.targets(root);
-    expect(cliAdapter.command("build", t!, root)).toBe("yarn build");
-    expect(cliAdapter.command("test", t!, root)).toBe("yarn test");
-    expect(cliAdapter.command("lint", t!, root)).toBe("yarn lint");
+    expect(await cliAdapter.command("build", t!, root)).toBe("yarn build");
+    expect(await cliAdapter.command("test", t!, root)).toBe("yarn test");
+    expect(await cliAdapter.command("lint", t!, root)).toBe("yarn lint");
   });
 
   it("resolves dev to `tsx <src>` when the TS source exists and tsx is a devDep", async () => {
@@ -63,7 +63,7 @@ describe("cli adapter", () => {
     const [t] = await cliAdapter.targets(root);
     // tsx is resolved through the package manager (default yarn, quiet) so it's
     // found on PATH and stdout stays clean when premo shells the dev command out.
-    expect(cliAdapter.command("dev", t!, root)).toBe("yarn --silent tsx bin/premo.ts");
+    expect(await cliAdapter.command("dev", t!, root)).toBe("yarn --silent tsx bin/premo.ts");
   });
 
   it("resolves tsx via npx when the project uses npm", async () => {
@@ -77,19 +77,19 @@ describe("cli adapter", () => {
     await mkdir(path.join(root, "bin"), { recursive: true });
     await writeFile(path.join(root, "bin/premo.ts"), "// entry");
     const [t] = await cliAdapter.targets(root);
-    expect(cliAdapter.command("dev", t!, root)).toBe("npx tsx bin/premo.ts");
+    expect(await cliAdapter.command("dev", t!, root)).toBe("npx tsx bin/premo.ts");
   });
 
   it("falls back to a dev/start script, then to `node <bin>`", async () => {
     const scriptRoot = await tmp();
     await pkg(scriptRoot, { name: "tool", bin: "./dist/cli.js", scripts: { start: "node ." } });
     const [st] = await cliAdapter.targets(scriptRoot);
-    expect(cliAdapter.command("dev", st!, scriptRoot)).toBe("yarn start");
+    expect(await cliAdapter.command("dev", st!, scriptRoot)).toBe("yarn start");
 
     const bareRoot = await tmp();
     await pkg(bareRoot, { name: "tool", bin: "./dist/cli.js" });
     const [bt] = await cliAdapter.targets(bareRoot);
-    expect(cliAdapter.command("dev", bt!, bareRoot)).toBe("node dist/cli.js");
+    expect(await cliAdapter.command("dev", bt!, bareRoot)).toBe("node dist/cli.js");
   });
 
   it("bakes deploy=npm publish only for a publishable package", async () => {

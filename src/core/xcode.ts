@@ -1,6 +1,5 @@
 import { execa } from "execa";
 import { readdir } from "node:fs/promises";
-import { readdirSync } from "node:fs";
 import pc from "picocolors";
 import type { ProjectManifest, XcodeDestination } from "../manifest/types.js";
 import { selectFromList } from "./select.js";
@@ -29,15 +28,6 @@ function pick(entries: string[]): XcodeProject | null {
 export async function findXcodeProject(root: string): Promise<XcodeProject | null> {
   try {
     return pick(await readdir(root));
-  } catch {
-    return null;
-  }
-}
-
-// Sync sibling for the synchronous Adapter.command() path (cheap readdir).
-export function findXcodeProjectSync(root: string): XcodeProject | null {
-  try {
-    return pick(readdirSync(root));
   } catch {
     return null;
   }

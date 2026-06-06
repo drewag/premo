@@ -6,7 +6,6 @@ import { log } from "../logger.js";
 import {
   buildSettings,
   findXcodeProject,
-  findXcodeProjectSync,
   listSchemes,
   pickDefaultDestination,
   projectFlag,
@@ -34,8 +33,8 @@ export const xcodeAdapter: Adapter = {
   // Best-effort live commands (used for the `doctor` preview before adopt bakes
   // concrete ones). Guesses the scheme as the project basename — correct for the
   // common single-scheme case; the first real verb auto-adopts and replaces these.
-  command(verb: Verb, _target: DetectedTarget, root: string): string | null {
-    const proj = findXcodeProjectSync(root);
+  async command(verb: Verb, _target: DetectedTarget, root: string): Promise<string | null> {
+    const proj = await findXcodeProject(root);
     if (!proj) return null;
     const cmds = xcodeCommands(projectFlag(proj), proj.name);
     switch (verb) {

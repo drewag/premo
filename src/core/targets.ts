@@ -44,7 +44,7 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
       const cmd =
         cfg?.commands[verb] ??
         manifest.commands[verb] ??
-        (det && adapter ? (adapter.command(verb, det, root) ?? undefined) : undefined);
+        (det && adapter ? ((await adapter.command(verb, det, root)) ?? undefined) : undefined);
       if (cmd) commands[verb] = cmd;
     }
 

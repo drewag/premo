@@ -111,12 +111,12 @@ describe("xcodeCommands / adapter.command", () => {
     const root = await tmp();
     await mkdir(path.join(root, "Awooga.xcodeproj"));
     const [t] = await xcodeAdapter.targets(root);
-    expect(xcodeAdapter.command("lint", t!, root)).toBeNull();
-    expect(xcodeAdapter.command("deploy", t!, root)).toBeNull();
-    expect(xcodeAdapter.command("build", t!, root)).toContain("xcodebuild");
+    expect(await xcodeAdapter.command("lint", t!, root)).toBeNull();
+    expect(await xcodeAdapter.command("deploy", t!, root)).toBeNull();
+    expect(await xcodeAdapter.command("build", t!, root)).toContain("xcodebuild");
 
     await writeFile(path.join(root, ".swiftlint.yml"), "");
-    expect(xcodeAdapter.command("lint", t!, root)).toBe("swiftlint");
+    expect(await xcodeAdapter.command("lint", t!, root)).toBe("swiftlint");
   });
 });
 
