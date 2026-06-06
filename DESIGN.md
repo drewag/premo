@@ -68,7 +68,7 @@ For `premo <verb>`, first hit wins:
 
 1. **Explicit config** — `premo.json` maps the verb (and per-target overrides) to a command. Always wins.
 2. **Built-in adapter** — premo sniffs the repo (yarn workspaces, package.json scripts, Cargo, …) and supplies a default command. This is the "convention" layer; it's what makes an _unadopted_ standard repo Just Work.
-3. **Helpful not-implemented** — neither resolves the verb → print an actionable message: detected stack, the closest guess, and how to wire it (`premo adopt` / `premo set <verb> '<cmd>'`).
+3. **Helpful not-implemented** — neither resolves the verb → print an actionable message: detected stack, the closest guess, and how to wire it (`premo adopt`, `premo skill`, or editing `commands` in `premo.json`).
 
 ### The three tiers are a ratchet
 
@@ -186,7 +186,7 @@ Foreground `dev` is the current behavior (spawn target dev processes, color-pref
 - `stop` → read the records, kill by **process group** (so child watchers/servers die too), clear the records.
 - `logs [target]` → tail `.runtime/<target>.log` (all targets interleaved if none given).
 
-`core/runtime.ts` already has pidfile/log plumbing (`writePid`/`readPid`/`clearPid`, `.runtime/` layout) to build this on.
+Implemented in `core/supervise.ts`: the background records (`{ pid, pgid, logPath, … }`) live in `.premo-local.json` via `core/local.ts`, and logs under `.runtime/<target>.log`.
 
 ### 6.2 `build`
 
@@ -234,7 +234,7 @@ Commander-based TS app (`bin/premo.ts` → `src/cli/registry.ts`), run via `tsx`
 **Reuse (already implemented):**
 
 - `core/project.ts` — load/save/validate `premo.json` (Zod). Extend schema with §5 fields.
-- `core/runtime.ts` — `.runtime/` pidfiles + logs → foundation for §6.1 supervision.
+- `core/local.ts` — worktree-local `.premo-local.json` state (background process records, last-run xcode destination).
 - `core/logger.ts`, `core/env.ts`, command registry, the existing `dev`/`stop` process-spawning.
 
 **Add (net-new):**
@@ -244,7 +244,7 @@ Commander-based TS app (`bin/premo.ts` → `src/cli/registry.ts`), run via `tsx`
 - `core/adapters/` — detector + default-command providers (§7); `adopt` command on top.
 - `core/supervise.ts` — detached spawn / process-group kill / log tail (§6.1).
 - `core/deploy.ts` — change listing + ref bookkeeping (§6.5).
-- New commands: `build`, `test`, `lint`, `deploy`, `logs`, `adopt`, `set` (and generalize `dev` with `--background`, `stop` with process-group kill).
+- New commands: `build`, `test`, `lint`, `deploy`, `logs`, `adopt` (and generalize `dev` with `--background`, `stop` with process-group kill).
 
 ---
 
@@ -288,7 +288,7 @@ New, from the task-runner reframe:
 13. **Scope granularity is split:** `build`/`test`/`deploy` are target-granular; `lint` is file-granular. `test --all` means all _targets_, not file-level impact analysis.
 14. **`lint` auto-fixes by default; `--dry` only checks.** No separate `format` verb.
 15. **Deploy is git-ref bookkeeping** (§6.5): `deployed/<target>` refs, ff-only advance + version tag, `git log` for the undeployed change listing. **Single env by default; multiple supported**, and the `<env>` ref segment appears only when more than one env is configured.
-16. **premo owns a generic background-supervision layer** — detached process-group spawn + pidfile + logfile + group-kill — because we can't lean on Docker's lifecycle for host processes.
+16. **premo owns a generic background-supervision layer** — detached process-group spawn + `.premo-local.json` records + logfile + group-kill — because we can't lean on Docker's lifecycle for host processes.
 17. **git is assumed.** Affected-detection, deploy, and worktrees all require a git repo.
 18. **Data-branches are out of scope** (§9.2); a stateful project opts in via tier-3 plumbing, designed separately.
 19. **Every capability is a project-level contract; scaffolding and adapters only populate it.** No feature branches on "is this a scaffolded project." `shell`, `deploy`, `open`, and the verbs all resolve from declared config (`commands`, `shells`, …). `premo new` and future adapters _write_ that config, but a hand-authored `premo.json` is first-class and behaves identically. When tempted to special-case scaffolded vs. adopted, define the contract instead and have scaffolding fulfill it.
