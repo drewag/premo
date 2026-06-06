@@ -3,10 +3,10 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { resolveTargets } from "../../src/core/targets.js";
-import { ProjectManifest } from "../../src/strand-api/types.js";
+import { ProjectManifest } from "../../src/premo-api/types.js";
 
 async function tmp(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "strand-targets-"));
+  return mkdtemp(path.join(tmpdir(), "premo-targets-"));
 }
 async function pkg(dir: string, contents: object): Promise<void> {
   await mkdir(dir, { recursive: true });

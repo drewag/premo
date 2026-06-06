@@ -1,10 +1,11 @@
 node_modules/
 dist/
 .runtime/
-.strand-local.json
+.premo/
+.premo-local.json
 *.log
 .DS_Store
+*.swp
 coverage/
 .vitest-cache/
 test/tmp/
-playground/

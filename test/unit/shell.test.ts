@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildShellInvocation } from "../../src/cli/commands/shell.js";
-import type { ShellSpec } from "../../src/strand-api/types.js";
+import type { ShellSpec } from "../../src/premo-api/types.js";
 
 describe("buildShellInvocation", () => {
   const env = { PG_PORT: "45920" };

@@ -7,7 +7,7 @@ import { log } from "../../core/logger.js";
 export function register(program: Command): void {
   program
     .command("adopt")
-    .description("Detect this project's stack and write a strand.json.")
+    .description("Detect this project's stack and write a premo.json.")
     .action(async () => {
       const cwd = process.cwd();
       if (findProjectRoot(cwd)) {

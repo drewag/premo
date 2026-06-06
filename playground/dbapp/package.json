@@ -1,0 +1,15 @@
+{
+  "name": "dbapp",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": ["shared","backend"],
+  "scripts": {
+    "test": "yarn workspaces run test",
+    "lint": "yarn workspaces run lint",
+    "lint:fix": "yarn workspaces run lint:fix",
+    "build": "yarn workspaces run build"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

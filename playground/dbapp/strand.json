@@ -1,0 +1,13 @@
+{
+  "name": "dbapp",
+  "version": "0",
+  "strands": [
+    "shared",
+    "db",
+    "backend"
+  ],
+  "ports": {
+    "base": 47900,
+    "block": 100
+  }
+}

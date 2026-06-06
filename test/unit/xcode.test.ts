@@ -6,12 +6,12 @@ import path from "node:path";
 vi.mock("execa", () => ({ execa: vi.fn() }));
 import { execa } from "execa";
 
-import { ProjectManifest } from "../../src/strand-api/types.js";
+import { ProjectManifest } from "../../src/premo-api/types.js";
 import { detectAdapter } from "../../src/core/adapters/index.js";
 import { xcodeAdapter } from "../../src/core/adapters/xcode.js";
 import { readFile } from "node:fs/promises";
 import {
-  ensureStrandGitignore,
+  ensurePremoGitignore,
   readLastXcodeDest,
   writeLastXcodeDest,
 } from "../../src/core/local.js";
@@ -55,7 +55,7 @@ function stubSimctl(json = SIMCTL_JSON, xctrace = ""): void {
 afterEach(() => mockExeca.mockReset());
 
 async function tmp(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "strand-xcode-"));
+  return mkdtemp(path.join(tmpdir(), "premo-xcode-"));
 }
 
 function xcodeManifest(extra: Record<string, unknown> = {}) {
@@ -92,20 +92,20 @@ describe("findXcodeProject / adapter detection", () => {
 });
 
 describe("xcodeCommands / adapter.command", () => {
-  it("threads the destination through STRAND_XCODE_DEST and bakes scheme", () => {
+  it("threads the destination through PREMO_XCODE_DEST and bakes scheme", () => {
     const cmds = xcodeCommands("-project Awooga.xcodeproj", "Awooga");
     expect(cmds.build).toBe(
-      'xcodebuild -project Awooga.xcodeproj -scheme Awooga -destination "$STRAND_XCODE_DEST" build',
+      'xcodebuild -project Awooga.xcodeproj -scheme Awooga -destination "$PREMO_XCODE_DEST" build',
     );
-    expect(cmds.test).toContain('-destination "$STRAND_XCODE_DEST" test');
-    expect(cmds.dev).toContain("STRAND_XCODE_BOOT_UDID");
+    expect(cmds.test).toContain('-destination "$PREMO_XCODE_DEST" test');
+    expect(cmds.dev).toContain("PREMO_XCODE_BOOT_UDID");
     expect(cmds.dev).toContain("simctl launch --console-pty");
     expect(cmds.dev).toContain("devicectl device install");
     // Product path comes from build settings (destination-accurate), not `find`.
     expect(cmds.dev).toContain("-showBuildSettings");
     expect(cmds.dev).not.toContain("find ");
-    // Build verbosity is controlled by the injected $STRAND_XCODE_QUIET.
-    expect(cmds.dev).toContain("$STRAND_XCODE_QUIET build");
+    // Build verbosity is controlled by the injected $PREMO_XCODE_QUIET.
+    expect(cmds.dev).toContain("$PREMO_XCODE_QUIET build");
   });
 
   it("only offers lint when a .swiftlint.yml exists; never a deploy default", async () => {
@@ -213,7 +213,7 @@ describe("xcodeEnvFor", () => {
     expect(mockExeca).not.toHaveBeenCalled();
   });
 
-  it("exports STRAND_XCODE_* for an xcode project", async () => {
+  it("exports PREMO_XCODE_* for an xcode project", async () => {
     stubSimctl();
     const manifest = xcodeManifest({
       xcode: {
@@ -224,10 +224,10 @@ describe("xcodeEnvFor", () => {
       },
     });
     const env = await xcodeEnvFor(manifest, { interactive: false });
-    expect(env.STRAND_XCODE_DEST).toBe("platform=iOS Simulator,id=UDID-IPHONE");
-    expect(env.STRAND_XCODE_BOOT_UDID).toBe("UDID-IPHONE");
-    expect(env.STRAND_XCODE_BUNDLE_ID).toBe("drewag.Awooga");
-    expect(env.STRAND_XCODE_DEVICE_UDID).toBeUndefined();
+    expect(env.PREMO_XCODE_DEST).toBe("platform=iOS Simulator,id=UDID-IPHONE");
+    expect(env.PREMO_XCODE_BOOT_UDID).toBe("UDID-IPHONE");
+    expect(env.PREMO_XCODE_BUNDLE_ID).toBe("drewag.Awooga");
+    expect(env.PREMO_XCODE_DEVICE_UDID).toBeUndefined();
   });
 
   it("quiets the build by default and unquiets it with verbose", async () => {
@@ -239,18 +239,18 @@ describe("xcodeEnvFor", () => {
         defaultDestination: { platform: "ios-simulator", deviceName: "iPhone 17 Pro", os: "26.2" },
       },
     });
-    expect((await xcodeEnvFor(manifest, { interactive: false })).STRAND_XCODE_QUIET).toBe("-quiet");
+    expect((await xcodeEnvFor(manifest, { interactive: false })).PREMO_XCODE_QUIET).toBe("-quiet");
     expect(
-      (await xcodeEnvFor(manifest, { interactive: false, verbose: true })).STRAND_XCODE_QUIET,
+      (await xcodeEnvFor(manifest, { interactive: false, verbose: true })).PREMO_XCODE_QUIET,
     ).toBe("");
   });
 
-  it("exports STRAND_XCODE_DEVICE_UDID (not BOOT_UDID) for a physical device", async () => {
+  it("exports PREMO_XCODE_DEVICE_UDID (not BOOT_UDID) for a physical device", async () => {
     stubSimctl(SIMCTL_JSON, XCTRACE_OUTPUT);
     const manifest = xcodeManifest({ xcode: { project: "Awooga.xcodeproj", scheme: "Awooga" } });
     const env = await xcodeEnvFor(manifest, { device: "andrew's iphone", interactive: false });
-    expect(env.STRAND_XCODE_DEVICE_UDID).toBe("00008120-001E445E0C11");
-    expect(env.STRAND_XCODE_BOOT_UDID).toBeUndefined();
+    expect(env.PREMO_XCODE_DEVICE_UDID).toBe("00008120-001E445E0C11");
+    expect(env.PREMO_XCODE_BOOT_UDID).toBeUndefined();
   });
 });
 
@@ -266,7 +266,7 @@ describe("last-destination memory", () => {
     defaultDestination: { platform: "ios-simulator", deviceName: "iPad Pro", os: "26.2" },
   };
 
-  it("round-trips the last destination through .strand-local.json", async () => {
+  it("round-trips the last destination through .premo-local.json", async () => {
     const root = await tmp();
     expect(await readLastXcodeDest(root)).toBeUndefined();
     await writeLastXcodeDest(root, {
@@ -320,19 +320,19 @@ describe("last-destination memory", () => {
   });
 });
 
-describe("ensureStrandGitignore", () => {
-  it("adds strand-local paths once, idempotently, preserving existing entries", async () => {
+describe("ensurePremoGitignore", () => {
+  it("adds premo-local paths once, idempotently, preserving existing entries", async () => {
     const root = await tmp();
     await writeFile(path.join(root, ".gitignore"), "node_modules\n");
 
-    await ensureStrandGitignore(root);
+    await ensurePremoGitignore(root);
     const after = await readFile(path.join(root, ".gitignore"), "utf8");
     expect(after).toContain("node_modules");
-    expect(after).toContain(".strand-local.json");
-    expect(after).toContain(".strand/");
+    expect(after).toContain(".premo-local.json");
+    expect(after).toContain(".premo/");
     expect(after).toContain(".runtime/");
 
-    await ensureStrandGitignore(root); // no-op the second time
+    await ensurePremoGitignore(root); // no-op the second time
     expect(await readFile(path.join(root, ".gitignore"), "utf8")).toBe(after);
   });
 });

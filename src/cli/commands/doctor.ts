@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { execa } from "execa";
 import pc from "picocolors";
-import { VERBS, type Verb } from "../../strand-api/types.js";
+import { VERBS, type Verb } from "../../premo-api/types.js";
 import { inspectContext } from "../../core/context.js";
 import { resolveTargets, type Target } from "../../core/targets.js";
 import { isGitRepo, resolveBase } from "../../core/git.js";
@@ -42,7 +42,7 @@ const hostChecks: Check[] = [
         await execa("docker", ["info"], { stdio: "ignore" });
         return { ok: true, detail: stdout.trim() };
       } catch {
-        return { ok: false, detail: "not running (only needed for scaffolded projects)" };
+        return { ok: false, detail: "not running (only needed if a project uses docker)" };
       }
     },
   },
@@ -94,7 +94,7 @@ async function projectSection(): Promise<void> {
   log.info(pc.bold("Project"));
   log.info(`  ${manifest.name}  ${pc.dim(root)}`);
   log.info(
-    `  strand.json   ${adopted ? pc.green("present") : pc.yellow("not yet — auto-adopts on first verb")}`,
+    `  premo.json   ${adopted ? pc.green("present") : pc.yellow("not yet — auto-adopts on first verb")}`,
   );
   log.info(`  adapter       ${adapterName ?? pc.yellow("none (add commands manually)")}`);
 
@@ -159,9 +159,9 @@ function printGaps(targets: Target[]): void {
   }
   for (const v of unwired) {
     if (v === "deploy") {
-      log.dim("  deploy — set commands.deploy in strand.json to enable.");
+      log.dim("  deploy — set commands.deploy in premo.json to enable.");
     } else {
-      log.dim(`  ${v} — no ${v} script found; add one, or set commands.${v} in strand.json.`);
+      log.dim(`  ${v} — no ${v} script found; add one, or set commands.${v} in premo.json.`);
     }
   }
 }

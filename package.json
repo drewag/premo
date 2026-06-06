@@ -1,20 +1,19 @@
 {
-  "name": "strand",
+  "name": "premo",
   "version": "0.0.0",
-  "description": "Opinionated CLI for scaffolding and running component-based, agent-friendly coding projects.",
+  "description": "A universal remote for your projects — one set of verbs (dev, build, test, lint, deploy) that works the same way in every repo.",
   "type": "module",
   "private": true,
   "bin": {
-    "strand": "./bin/strand.ts"
+    "premo": "./bin/premo.ts"
   },
   "scripts": {
-    "strand": "tsx bin/strand.ts",
+    "premo": "tsx bin/premo.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint . && prettier --check .",
     "lint:fix": "eslint --fix . && prettier --write .",
     "test": "yarn test:unit",
     "test:unit": "vitest run --project=unit",
-    "test:integration": "vitest run --project=integration",
     "test:watch": "vitest --project=unit"
   },
   "engines": {

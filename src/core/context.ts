@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ProjectManifest, type ProjectManifestInput } from "../strand-api/types.js";
+import { ProjectManifest, type ProjectManifestInput } from "../premo-api/types.js";
 import {
   PROJECT_FILE,
   findProjectRoot,
@@ -8,7 +8,7 @@ import {
   sanitizeProjectName,
 } from "./project.js";
 import { detectAdapter, readPackageJson } from "./adapters/index.js";
-import { ensureStrandGitignore } from "./local.js";
+import { ensurePremoGitignore } from "./local.js";
 import { gitRoot } from "./git.js";
 import { allocatePortBlock } from "./registry.js";
 import { log } from "./logger.js";
@@ -21,13 +21,13 @@ export interface Context {
 export interface Inspection {
   root: string;
   manifest: ProjectManifest;
-  adopted: boolean; // a strand.json already exists on disk
+  adopted: boolean; // a premo.json already exists on disk
   adapterName: string | null;
 }
 
-// Like ensureContext, but READ-ONLY: never writes a strand.json and never
+// Like ensureContext, but READ-ONLY: never writes a premo.json and never
 // allocates ports. For an un-adopted repo it returns the manifest that *would*
-// be written. Used by `strand doctor` to diagnose without side effects.
+// be written. Used by `premo doctor` to diagnose without side effects.
 export async function inspectContext(cwd: string): Promise<Inspection> {
   const existing = findProjectRoot(cwd);
   if (existing) {
@@ -51,7 +51,7 @@ export async function inspectContext(cwd: string): Promise<Inspection> {
   return { root, manifest, adopted: false, adapterName: adapter?.name ?? null };
 }
 
-// Load the project context, auto-adopting (writing a strand.json) on first
+// Load the project context, auto-adopting (writing a premo.json) on first
 // touch of an un-adopted repo. See DESIGN.md §3 — there is no permanent
 // zero-config mode; every touched project ends up with the lingua-franca config.
 export async function ensureContext(cwd: string): Promise<Context> {
@@ -65,7 +65,7 @@ export async function ensureContext(cwd: string): Promise<Context> {
 }
 
 // Detect the stack, allocate a conflict-free port block if anything serves,
-// and write strand.json. Idempotent enough to re-run via `strand adopt`.
+// and write premo.json. Idempotent enough to re-run via `premo adopt`.
 export async function adoptProject(root: string): Promise<ProjectManifest> {
   const adapter = await detectAdapter(root);
   const rootPkg = await readPackageJson(root);
@@ -101,14 +101,14 @@ export async function adoptProject(root: string): Promise<ProjectManifest> {
 
   const manifest = ProjectManifest.parse(draft); // validate
   await saveProject(root, draft); // write the clean, un-defaulted version
-  await ensureStrandGitignore(root); // keep strand-local state out of git
+  await ensurePremoGitignore(root); // keep premo-local state out of git
 
   const detail = adapter
     ? `detected ${adapter.name}, ${detected.length} target(s)`
     : "no adapter matched";
   log.ok(`wrote ${PROJECT_FILE} — ${detail}${portInfo}`);
   if (!adapter) {
-    log.dim('  no commands resolved yet; add them under "commands" in strand.json.');
+    log.dim('  no commands resolved yet; add them under "commands" in premo.json.');
   }
   return manifest;
 }

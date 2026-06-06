@@ -9,7 +9,7 @@ describe("global port registry", () => {
   let getAllocation: typeof import("../../src/core/registry.js").getAllocation;
 
   beforeAll(async () => {
-    process.env.STRAND_HOME = await mkdtemp(path.join(tmpdir(), "strand-home-"));
+    process.env.PREMO_HOME = await mkdtemp(path.join(tmpdir(), "premo-home-"));
     const mod = await import("../../src/core/registry.js");
     allocatePortBlock = mod.allocatePortBlock;
     getAllocation = mod.getAllocation;

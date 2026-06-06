@@ -2,7 +2,7 @@ import { execa } from "execa";
 import { readdir } from "node:fs/promises";
 import { readdirSync } from "node:fs";
 import pc from "picocolors";
-import type { ProjectManifest, XcodeDestination } from "../strand-api/types.js";
+import type { ProjectManifest, XcodeDestination } from "../premo-api/types.js";
 import { selectFromList } from "./select.js";
 import { readLastXcodeDest, writeLastXcodeDest } from "./local.js";
 
@@ -86,7 +86,7 @@ export async function buildSettings(
   return { bundleId, platforms };
 }
 
-// The default destination strand pins at adopt time: a real, installed simulator
+// The default destination premo pins at adopt time: a real, installed simulator
 // for the project's primary platform, falling back to macOS for Mac-only apps.
 export async function pickDefaultDestination(
   platforms: string[],
@@ -108,23 +108,23 @@ export async function pickDefaultDestination(
 // --- the baked verb commands ---------------------------------------------
 
 // build/test/dev as shell strings. Project + scheme are stable (baked here); only
-// the destination varies per run, threaded in as STRAND_XCODE_DEST. dev also reads
-// STRAND_XCODE_BUNDLE_ID and routes on the destination kind: a physical device
-// (STRAND_XCODE_DEVICE_UDID) installs/launches via devicectl, a simulator
-// (STRAND_XCODE_BOOT_UDID) via simctl, and macOS just opens the built .app.
+// the destination varies per run, threaded in as PREMO_XCODE_DEST. dev also reads
+// PREMO_XCODE_BUNDLE_ID and routes on the destination kind: a physical device
+// (PREMO_XCODE_DEVICE_UDID) installs/launches via devicectl, a simulator
+// (PREMO_XCODE_BOOT_UDID) via simctl, and macOS just opens the built .app.
 export function xcodeCommands(
   flag: string,
   scheme: string,
 ): { dev: string; build: string; test: string } {
   const base = `xcodebuild ${flag} -scheme ${shq(scheme)}`;
-  const built = `${base} -configuration Debug -destination "$STRAND_XCODE_DEST" -derivedDataPath "$DD"`;
+  const built = `${base} -configuration Debug -destination "$PREMO_XCODE_DEST" -derivedDataPath "$DD"`;
   const dev = [
     `set -e`,
-    `DD=.strand/xcode-dd`,
-    // Quiet by default ($STRAND_XCODE_QUIET = -quiet): only warnings/errors during
+    `DD=.premo/xcode-dd`,
+    // Quiet by default ($PREMO_XCODE_QUIET = -quiet): only warnings/errors during
     // the build, then the running app's logs stream as usual. `dev -v` clears it.
-    `if [ -n "$STRAND_XCODE_QUIET" ]; then echo "▸ Building… (pass -v for full xcodebuild logs)"; fi`,
-    `${built} $STRAND_XCODE_QUIET build`,
+    `if [ -n "$PREMO_XCODE_QUIET" ]; then echo "▸ Building… (pass -v for full xcodebuild logs)"; fi`,
+    `${built} $PREMO_XCODE_QUIET build`,
     // Resolve the exact product for THIS destination from build settings, so a
     // stale simulator build is never installed on a device (or vice-versa) —
     // both can coexist under Build/Products as Debug-iphone{simulator,os}.
@@ -132,23 +132,23 @@ export function xcodeCommands(
     `TBD=$(printf '%s\\n' "$S" | sed -n 's/^ *TARGET_BUILD_DIR = //p' | head -1)`,
     `WN=$(printf '%s\\n' "$S" | sed -n 's/^ *WRAPPER_NAME = //p' | head -1)`,
     `APP="$TBD/$WN"`,
-    `if [ ! -d "$APP" ]; then echo "strand: no built .app for this destination ($APP)" >&2; exit 1; fi`,
-    `if [ -n "$STRAND_XCODE_DEVICE_UDID" ]; then`,
-    `  xcrun devicectl device install app --device "$STRAND_XCODE_DEVICE_UDID" "$APP"`,
-    `  exec xcrun devicectl device process launch --console --terminate-existing --device "$STRAND_XCODE_DEVICE_UDID" "$STRAND_XCODE_BUNDLE_ID"`,
-    `elif [ -n "$STRAND_XCODE_BOOT_UDID" ]; then`,
-    `  xcrun simctl boot "$STRAND_XCODE_BOOT_UDID" 2>/dev/null || true`,
+    `if [ ! -d "$APP" ]; then echo "premo: no built .app for this destination ($APP)" >&2; exit 1; fi`,
+    `if [ -n "$PREMO_XCODE_DEVICE_UDID" ]; then`,
+    `  xcrun devicectl device install app --device "$PREMO_XCODE_DEVICE_UDID" "$APP"`,
+    `  exec xcrun devicectl device process launch --console --terminate-existing --device "$PREMO_XCODE_DEVICE_UDID" "$PREMO_XCODE_BUNDLE_ID"`,
+    `elif [ -n "$PREMO_XCODE_BOOT_UDID" ]; then`,
+    `  xcrun simctl boot "$PREMO_XCODE_BOOT_UDID" 2>/dev/null || true`,
     `  open -a Simulator || true`,
-    `  xcrun simctl install "$STRAND_XCODE_BOOT_UDID" "$APP"`,
-    `  exec xcrun simctl launch --console-pty "$STRAND_XCODE_BOOT_UDID" "$STRAND_XCODE_BUNDLE_ID"`,
+    `  xcrun simctl install "$PREMO_XCODE_BOOT_UDID" "$APP"`,
+    `  exec xcrun simctl launch --console-pty "$PREMO_XCODE_BOOT_UDID" "$PREMO_XCODE_BUNDLE_ID"`,
     `else`,
     `  exec open -W "$APP"`,
     `fi`,
   ].join("\n");
   return {
     dev,
-    build: `${base} -destination "$STRAND_XCODE_DEST" build`,
-    test: `${base} -destination "$STRAND_XCODE_DEST" test`,
+    build: `${base} -destination "$PREMO_XCODE_DEST" build`,
+    test: `${base} -destination "$PREMO_XCODE_DEST" test`,
   };
 }
 
@@ -326,7 +326,7 @@ export async function resolveDestination(opts: ResolveOptions): Promise<Destinat
   if (!opts.interactive) {
     if (fromCfg) return fromCfg;
     throw new Error(
-      "No destination to run on. Set xcode.defaultDestination in strand.json or pass --device.",
+      "No destination to run on. Set xcode.defaultDestination in premo.json or pass --device.",
     );
   }
 
@@ -361,9 +361,9 @@ export async function resolveDestination(opts: ResolveOptions): Promise<Destinat
   return all[order[chosen]!]!;
 }
 
-// The STRAND_XCODE_* env a verb run needs, or {} when this isn't an xcode
+// The PREMO_XCODE_* env a verb run needs, or {} when this isn't an xcode
 // project. Resolves the destination (flag → default → optional interactive pick)
-// and exposes it (plus the bundle id) to the baked commands. STRAND_XCODE_QUIET
+// and exposes it (plus the bundle id) to the baked commands. PREMO_XCODE_QUIET
 // carries `-quiet` by default so `dev` doesn't flood the terminal with build
 // output (only warnings/errors show); `verbose` clears it. Returns the empty
 // env for every other adapter, so the verb commands stay generic.
@@ -396,12 +396,12 @@ export async function xcodeEnvFor(
     });
   }
   const env: NodeJS.ProcessEnv = {
-    STRAND_XCODE_DEST: dest.dest,
-    STRAND_XCODE_QUIET: opts.verbose ? "" : "-quiet",
+    PREMO_XCODE_DEST: dest.dest,
+    PREMO_XCODE_QUIET: opts.verbose ? "" : "-quiet",
   };
-  if (dest.bootUdid) env.STRAND_XCODE_BOOT_UDID = dest.bootUdid;
-  if (dest.deviceUdid) env.STRAND_XCODE_DEVICE_UDID = dest.deviceUdid;
-  if (manifest.xcode?.bundleId) env.STRAND_XCODE_BUNDLE_ID = manifest.xcode.bundleId;
+  if (dest.bootUdid) env.PREMO_XCODE_BOOT_UDID = dest.bootUdid;
+  if (dest.deviceUdid) env.PREMO_XCODE_DEVICE_UDID = dest.deviceUdid;
+  if (manifest.xcode?.bundleId) env.PREMO_XCODE_BUNDLE_ID = manifest.xcode.bundleId;
   return env;
 }
 

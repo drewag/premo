@@ -7,7 +7,7 @@ export function deployRef(target: string, env: string, multiEnv: boolean): strin
 }
 
 export interface DeployedRef {
-  localBranch: string; // the branch strand advances and pushes
+  localBranch: string; // the branch premo advances and pushes
   trackingRef: string | null; // what to diff HEAD against (null ⇒ first deploy)
 }
 

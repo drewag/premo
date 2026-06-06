@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { ProjectManifestInput, Verb } from "../../strand-api/types.js";
+import type { ProjectManifestInput, Verb } from "../../premo-api/types.js";
 import { sanitizeProjectName } from "../project.js";
 import { log } from "../logger.js";
 import {
@@ -15,9 +15,9 @@ import {
 import { type Adapter, type DetectedTarget } from "./index.js";
 
 // Native Apple project (.xcodeproj / .xcworkspace). One target per project;
-// `strand test` runs the whole scheme (unit + UI suites). The scheme, bundle id,
+// `premo test` runs the whole scheme (unit + UI suites). The scheme, bundle id,
 // and a default simulator are resolved once at adopt time and baked into
-// strand.json, so the verbs never shell out to `xcodebuild -list` on every run.
+// premo.json, so the verbs never shell out to `xcodebuild -list` on every run.
 export const xcodeAdapter: Adapter = {
   name: "xcode",
 
@@ -53,7 +53,7 @@ export const xcodeAdapter: Adapter = {
   },
 
   // Configure tier (DESIGN §3): inspect the project once and emit a concrete
-  // `xcode` block + baked verb commands for strand.json.
+  // `xcode` block + baked verb commands for premo.json.
   async adopt(root: string): Promise<Partial<ProjectManifestInput>> {
     const proj = await findXcodeProject(root);
     if (!proj) return {};

@@ -5,7 +5,7 @@ import path from "node:path";
 // Worktree-local, gitignored state (DESIGN.md §5): background PIDs, the last
 // xcode run destination, etc. Owned here so several features can share the file
 // without stepping on each other's keys.
-export const LOCAL_FILE = ".strand-local.json";
+export const LOCAL_FILE = ".premo-local.json";
 
 export interface BackgroundProc {
   name: string;
@@ -58,17 +58,17 @@ export async function writeLastXcodeDest(root: string, dest: StoredDestination):
   await saveLocal(root, state);
 }
 
-// strand-owned, never-committed paths: local state, background logs, and the
+// premo-owned, never-committed paths: local state, background logs, and the
 // xcode build cache. Appended to .gitignore at adopt time so a `dev` run never
 // leaves a huge DerivedData dir or machine-local state staged.
-const IGNORED_PATHS = [LOCAL_FILE, ".runtime/", ".strand/"];
+const IGNORED_PATHS = [LOCAL_FILE, ".runtime/", ".premo/"];
 
-export async function ensureStrandGitignore(root: string): Promise<void> {
+export async function ensurePremoGitignore(root: string): Promise<void> {
   const file = path.join(root, ".gitignore");
   const current = existsSync(file) ? await readFile(file, "utf8") : "";
   const lines = new Set(current.split(/\r?\n/).map((l) => l.trim()));
   const missing = IGNORED_PATHS.filter((p) => !lines.has(p));
   if (missing.length === 0) return;
   const prefix = current && !current.endsWith("\n") ? "\n" : "";
-  await writeFile(file, `${current}${prefix}\n# strand\n${missing.join("\n")}\n`, "utf8");
+  await writeFile(file, `${current}${prefix}\n# premo\n${missing.join("\n")}\n`, "utf8");
 }

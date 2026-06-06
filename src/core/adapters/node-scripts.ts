@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { Verb } from "../../strand-api/types.js";
+import type { Verb } from "../../premo-api/types.js";
 import { sanitizeProjectName } from "../project.js";
 import {
   type Adapter,

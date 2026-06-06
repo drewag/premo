@@ -7,7 +7,7 @@ import { nodeScriptsAdapter } from "../../src/core/adapters/node-scripts.js";
 import { yarnWorkspacesAdapter } from "../../src/core/adapters/yarn-workspaces.js";
 
 async function tmp(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "strand-adapter-"));
+  return mkdtemp(path.join(tmpdir(), "premo-adapter-"));
 }
 async function pkg(dir: string, contents: object): Promise<void> {
   await mkdir(dir, { recursive: true });
@@ -44,7 +44,7 @@ describe("node-scripts adapter", () => {
     expect(nodeScriptsAdapter.command("dev", targets[0]!, root)).toBe("yarn start");
   });
 
-  it("forwards strand's port to a Vite dev server (Vite ignores $PORT)", async () => {
+  it("forwards premo's port to a Vite dev server (Vite ignores $PORT)", async () => {
     const root = await tmp();
     await pkg(root, {
       name: "app",

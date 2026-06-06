@@ -11,7 +11,7 @@ export function register(program: Command): void {
     .action(async (target: string | undefined) => {
       const root = findProjectRoot(process.cwd());
       if (!root) {
-        log.error("Not in a strand project (no strand.json found).");
+        log.error("Not in a premo project (no premo.json found).");
         process.exit(1);
       }
       const procs = await listBackground(root);

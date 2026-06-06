@@ -1,18 +1,18 @@
 import type { Command } from "commander";
 import pc from "picocolors";
-import { VERBS, type Verb } from "../strand-api/types.js";
+import { VERBS, type Verb } from "../premo-api/types.js";
 import { inspectContext } from "../core/context.js";
 import { resolveTargets } from "../core/targets.js";
 import { log } from "../core/logger.js";
 
 // Commands that support the day-to-day dev loop (shown as active alongside
-// whichever verbs are wired), versus strand-management commands. `shell` is
+// whichever verbs are wired), versus premo-management commands. `shell` is
 // conditionally active — only when the project declares one.
 const PROJECT_HELPERS = ["open", "logs", "stop"];
-const META = ["doctor", "adopt", "ports", "list", "new"];
+const META = ["doctor", "adopt", "ports"];
 
 // True when the invocation is a request for the top-level overview — no
-// subcommand, or a bare help flag. `strand build --help` is NOT top-level.
+// subcommand, or a bare help flag. `premo build --help` is NOT top-level.
 export function isTopLevelHelp(argv: string[]): boolean {
   const args = argv.slice(2);
   if (args.length === 0) return true;
@@ -41,9 +41,9 @@ export async function printGroupedHelp(program: Command): Promise<void> {
   const activeVerbs = VERBS.filter((v) => wired.has(v));
   const inactiveVerbs = VERBS.filter((v) => !wired.has(v));
 
-  log.info(`${pc.bold("strand")} — one set of verbs for every project.`);
+  log.info(`${pc.bold("premo")} — one set of verbs for every project.`);
   log.info("");
-  log.info(`Usage: ${pc.cyan("strand <command> [options]")}`);
+  log.info(`Usage: ${pc.cyan("premo <command> [options]")}`);
   log.info("");
 
   const activeHeader = projectName ? `Active  ${pc.dim(`(wired for ${projectName})`)}` : "Active";
@@ -51,7 +51,7 @@ export async function printGroupedHelp(program: Command): Promise<void> {
   const activeExtra = shellAvailable ? ["shell"] : [];
   printRows([...activeVerbs, ...PROJECT_HELPERS, ...activeExtra].map((n) => [n, desc(n)]));
   if (activeVerbs.length === 0) {
-    log.dim("  (no verbs wired yet — run `strand doctor`, or `strand adopt`)");
+    log.dim("  (no verbs wired yet — run `premo doctor`, or `premo adopt`)");
   }
 
   const inactive: [string, string][] = inactiveVerbs.map((v) => [v, inactiveReason(v)]);
@@ -63,15 +63,15 @@ export async function printGroupedHelp(program: Command): Promise<void> {
   }
 
   log.info("");
-  log.info(pc.bold("Manage strand"));
+  log.info(pc.bold("Manage premo"));
   printRows(META.map((n) => [n, desc(n)]));
 
   log.info("");
-  log.dim("Run `strand <command> --help` for details.");
+  log.dim("Run `premo <command> --help` for details.");
 }
 
 function inactiveReason(v: Verb): string {
-  if (v === "deploy") return "no deploy command — set commands.deploy in strand.json";
+  if (v === "deploy") return "no deploy command — set commands.deploy in premo.json";
   return `no ${v} command — add a ${v} script or set commands.${v}`;
 }
 

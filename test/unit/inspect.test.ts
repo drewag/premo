@@ -6,11 +6,11 @@ import path from "node:path";
 import { inspectContext } from "../../src/core/context.js";
 
 async function tmp(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "strand-inspect-"));
+  return mkdtemp(path.join(tmpdir(), "premo-inspect-"));
 }
 
 describe("inspectContext (doctor's read-only probe)", () => {
-  it("detects an un-adopted package WITHOUT writing strand.json", async () => {
+  it("detects an un-adopted package WITHOUT writing premo.json", async () => {
     const dir = await tmp();
     await writeFile(
       path.join(dir, "package.json"),
@@ -21,13 +21,13 @@ describe("inspectContext (doctor's read-only probe)", () => {
     expect(res.adopted).toBe(false);
     expect(res.adapterName).toBe("node-scripts");
     expect(res.manifest.targets.thing).toBeDefined();
-    expect(existsSync(path.join(dir, "strand.json"))).toBe(false); // never writes
+    expect(existsSync(path.join(dir, "premo.json"))).toBe(false); // never writes
   });
 
-  it("reports adopted when a strand.json is present", async () => {
+  it("reports adopted when a premo.json is present", async () => {
     const dir = await tmp();
     await writeFile(
-      path.join(dir, "strand.json"),
+      path.join(dir, "premo.json"),
       JSON.stringify({ name: "thing", commands: { build: "make" } }),
     );
     const res = await inspectContext(dir);

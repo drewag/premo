@@ -9,7 +9,7 @@ import {
   defaultBaseForProject,
 } from "./ports.js";
 
-// Host-global registry of port-block allocations, so every strand-managed
+// Host-global registry of port-block allocations, so every premo-managed
 // project on the machine gets a conflict-free block. Keyed by absolute
 // project path. Seeds from the hash-derived base, then steps past anything
 // already registered — replacing "hash-and-hope" with a tracked guarantee.
@@ -25,7 +25,7 @@ interface RegistryFile {
 }
 
 export function registryDir(): string {
-  return process.env.STRAND_HOME ?? path.join(os.homedir(), ".strand");
+  return process.env.PREMO_HOME ?? path.join(os.homedir(), ".premo");
 }
 
 export function registryPath(): string {

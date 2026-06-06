@@ -8,7 +8,7 @@ export interface DestFlags {
   verbose?: boolean;
 }
 
-// Resolve the STRAND_XCODE_* env for a verb run. A no-op (empty env) for
+// Resolve the PREMO_XCODE_* env for a verb run. A no-op (empty env) for
 // non-xcode projects. `remember` persists the chosen destination as the
 // project's last-run device (set by `dev`). On a resolution failure (e.g. no
 // destination and no default) it logs the message and returns null to abort.

@@ -39,7 +39,7 @@ describe("affectedTargets", () => {
   });
 
   it("returns empty for files under no target", () => {
-    expect(affectedTargets(["README.md", "strand.json"], targets)).toEqual(new Set());
+    expect(affectedTargets(["README.md", "premo.json"], targets)).toEqual(new Set());
   });
 
   it("treats a '.' dir as owning everything", () => {

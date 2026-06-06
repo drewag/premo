@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { ProjectManifestInput, Verb } from "../../strand-api/types.js";
+import type { ProjectManifestInput, Verb } from "../../premo-api/types.js";
 import { yarnWorkspacesAdapter } from "./yarn-workspaces.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
 import { xcodeAdapter } from "./xcode.js";
@@ -21,7 +21,7 @@ export interface Adapter {
   // The command to run `verb` in `target`, or null if the target can't.
   command(verb: Verb, target: DetectedTarget, root: string): string | null;
   // Optional configure-tier hook: inspect the repo and contribute concrete
-  // manifest fields (e.g. baked `commands`, an `xcode` block) for `strand adopt`
+  // manifest fields (e.g. baked `commands`, an `xcode` block) for `premo adopt`
   // to write. Adapters that resolve everything live (the node ones) omit this.
   adopt?(root: string): Promise<Partial<ProjectManifestInput>>;
 }
@@ -84,7 +84,7 @@ export function scriptCommandForVerb(
   if (!script) return null;
   const base = pm === "npm" ? `npm run ${script}` : `${pm} ${script}`; // yarn/pnpm <script>
 
-  // Vite ignores strand's $PORT env (unlike Next/CRA), so a `dev` that runs Vite
+  // Vite ignores premo's $PORT env (unlike Next/CRA), so a `dev` that runs Vite
   // would bind 5173 and collide across projects. Forward the allocated port as
   // `--port` when set; `${PORT:+…}` keeps it absent when no port was allocated.
   if (verb === "dev" && /(^|\s|\/)vite(\s|$)/.test(scripts[script]!)) {

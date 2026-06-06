@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { execa } from "execa";
 import { findProjectRoot, loadProject } from "../../core/project.js";
 import { interpolateArgv } from "../../core/env.js";
-import type { ShellSpec } from "../../strand-api/types.js";
+import type { ShellSpec } from "../../premo-api/types.js";
 import { log } from "../../core/logger.js";
 
 export interface BuiltShell {
@@ -33,7 +33,7 @@ export function register(program: Command): void {
     .action(async (name: string | undefined, opts: { command?: string }) => {
       const root = findProjectRoot(process.cwd());
       if (!root) {
-        log.error("Not in a strand project (no strand.json found).");
+        log.error("Not in a premo project (no premo.json found).");
         process.exit(1);
       }
       const manifest = await loadProject(root);
@@ -44,7 +44,7 @@ export function register(program: Command): void {
         if (shellNames.length === 0) {
           log.warn("No shells configured.");
           log.dim(
-            '  add one under "shells" in strand.json (or scaffold a strand that provides one).',
+            '  add one under "shells" in premo.json (or scaffold a premo that provides one).',
           );
           return;
         }

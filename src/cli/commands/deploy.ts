@@ -53,7 +53,7 @@ export function register(program: Command): void {
           }
           if (!t.commands.deploy) {
             log.error(
-              `Target "${targetArg}" has no deploy command (set commands.deploy in strand.json).`,
+              `Target "${targetArg}" has no deploy command (set commands.deploy in premo.json).`,
             );
             process.exit(1);
           }
@@ -61,7 +61,7 @@ export function register(program: Command): void {
         }
         if (deployable.length === 0) {
           log.warn("No deploy command configured for this project.");
-          log.dim('  set "commands.deploy" (or targets.<name>.commands.deploy) in strand.json.');
+          log.dim('  set "commands.deploy" (or targets.<name>.commands.deploy) in premo.json.');
           process.exitCode = 1;
           return;
         }
@@ -139,9 +139,9 @@ export function register(program: Command): void {
             reject: false,
             env: {
               ...process.env,
-              STRAND_DEPLOY_VERSION: version,
-              STRAND_DEPLOY_TARGET: p.target.name,
-              STRAND_DEPLOY_ENV: env,
+              PREMO_DEPLOY_VERSION: version,
+              PREMO_DEPLOY_TARGET: p.target.name,
+              PREMO_DEPLOY_ENV: env,
             },
           });
           if (res.exitCode !== 0) {

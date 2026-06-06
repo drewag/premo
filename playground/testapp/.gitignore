@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+.runtime/
+*.log
+.DS_Store
+.env
+.env.local
+.strand-local.json
+coverage/

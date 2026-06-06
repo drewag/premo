@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import type { Verb } from "../strand-api/types.js";
+import type { Verb } from "../premo-api/types.js";
 import type { Context } from "./context.js";
 import { resolveTargets, type Target } from "./targets.js";
 import { changedFiles } from "./git.js";
@@ -11,7 +11,7 @@ export interface VerbOptions {
   all?: boolean;
   /** narrow to affected targets by default (build/test); false ⇒ whole tree (lint). */
   affected: boolean;
-  /** extra env merged into each command (e.g. STRAND_XCODE_DEST). */
+  /** extra env merged into each command (e.g. PREMO_XCODE_DEST). */
   env?: NodeJS.ProcessEnv;
 }
 
@@ -75,7 +75,7 @@ export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Prom
     const where = targets.length === 0 ? "this project" : "the selected target(s)";
     log.warn(`No \`${verb}\` command resolved for ${where}.`);
     log.dim(
-      '  add one under "commands" (or targets.<name>.commands) in strand.json, or run `strand adopt`.',
+      '  add one under "commands" (or targets.<name>.commands) in premo.json, or run `premo adopt`.',
     );
     process.exitCode = 1;
     return;
