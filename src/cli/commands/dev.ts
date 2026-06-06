@@ -111,6 +111,13 @@ async function runAdoptedDev(
   }
 
   if (background) {
+    if (process.platform === "win32") {
+      log.error(
+        "`--background` isn't supported on Windows (supervision uses POSIX process groups).",
+      );
+      process.exitCode = 1;
+      return;
+    }
     for (const t of devTargets) {
       const proc = await spawnDetached(ctx.root, t.name, t.commands.dev!, t.cwd, env);
       log.ok(`${t.name} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`);

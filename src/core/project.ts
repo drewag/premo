@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { ZodError } from "zod";
 import { ProjectManifest, type ProjectManifestInput } from "../manifest/types.js";
 
 export const PROJECT_FILE = "premo.json";
@@ -10,8 +11,23 @@ export async function loadProject(dir: string): Promise<ProjectManifest> {
   if (!existsSync(file)) {
     throw new Error(`No ${PROJECT_FILE} found in ${dir}`);
   }
-  const raw = JSON.parse(await readFile(file, "utf8"));
-  return ProjectManifest.parse(raw);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(file, "utf8"));
+  } catch (e) {
+    throw new Error(`${PROJECT_FILE} is not valid JSON: ${(e as Error).message}`);
+  }
+  try {
+    return ProjectManifest.parse(raw);
+  } catch (e) {
+    if (e instanceof ZodError) {
+      const issues = e.issues
+        .map((i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("\n");
+      throw new Error(`${PROJECT_FILE} is invalid:\n${issues}`);
+    }
+    throw e;
+  }
 }
 
 export async function saveProject(dir: string, manifest: ProjectManifestInput): Promise<void> {
