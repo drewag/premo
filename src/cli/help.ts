@@ -9,7 +9,7 @@ import { log } from "../core/logger.js";
 // whichever verbs are wired), versus premo-management commands. `shell` is
 // conditionally active — only when the project declares one.
 const PROJECT_HELPERS = ["open", "logs", "stop"];
-const META = ["doctor", "adopt", "skill", "ports"];
+const META = ["doctor", "adopt", "skill", "ports", "completion"];
 
 // True when the invocation is a request for the top-level overview — no
 // subcommand, or a bare help flag. `premo build --help` is NOT top-level.

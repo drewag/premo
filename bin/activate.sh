@@ -32,5 +32,17 @@ premo-deactivate() {
   echo "premo deactivated."
 }
 
+# Best-effort: load shell completion so it matches the installed experience.
+# Any failure here is swallowed and never breaks sourcing. Note: in source mode
+# each TAB pays tsx startup, so completion is a touch slower than when installed.
+if [ -n "$ZSH_VERSION" ]; then
+  if ! command -v compdef >/dev/null 2>&1; then
+    autoload -Uz compinit 2>/dev/null && compinit -u 2>/dev/null
+  fi
+  eval "$(premo completion zsh 2>/dev/null)" 2>/dev/null
+elif [ -n "$BASH_VERSION" ]; then
+  eval "$(premo completion bash 2>/dev/null)" 2>/dev/null
+fi
+
 echo "premo activated from $_PREMO_DIR"
 echo "  run 'premo doctor' to verify, 'premo-deactivate' to remove."

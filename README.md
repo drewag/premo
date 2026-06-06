@@ -72,6 +72,20 @@ premo dev                  # run it
 
 `premo adopt` detects the stack and writes a `premo.json`. Worktree-local state (background PIDs, the last xcode run destination) lives in `.premo-local.json`; both it and the build cache are gitignored automatically.
 
+## Shell completion
+
+premo ships dynamic completion that knows your project — `premo build <TAB>` completes the real **target names** from `premo.json`, and option values (`--platform`, `--env`, shells) too. It's derived by reflecting the CLI, so it stays correct automatically as commands grow.
+
+`activate.sh` loads it for you in source mode. To install it yourself (or when running the published binary):
+
+```bash
+premo completion zsh  > "${fpath[1]}/_premo"     # zsh
+premo completion bash > /etc/bash_completion.d/premo   # bash
+premo completion fish > ~/.config/fish/completions/premo.fish  # fish
+```
+
+(`premo completion` with no argument detects your `$SHELL`.)
+
 ## Development
 
 Requires Node 22+.
