@@ -37,6 +37,10 @@ premo resolves each verb through three tiers (first hit wins):
 
 premo only ever reads a `premo.json` and shells out to your real toolchain. Uninstalling it breaks nothing.
 
+## Trust & safety
+
+premo **runs the commands a project declares** (in `premo.json` and your package scripts), so `premo build`/`dev`/… is effectively running that repo's own commands — **only run it in repositories you trust**, just as you would `npm install` or `npm run`. This matters especially when an agent invokes premo automatically. premo has no telemetry and makes no network calls of its own. See [SECURITY.md](./SECURITY.md).
+
 ## Supported stacks
 
 | Adapter        | What it covers                                                                      |

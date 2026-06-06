@@ -36,7 +36,7 @@ scripts.
 - **Don't grow the verb set.** Five core verbs is the whole point. If something doesn't fit, it belongs in project config (`commands`, `shells`), not a new verb.
 - **Don't special-case "did premo scaffold this."** Every capability is a project-level contract declared in `premo.json`; a hand-written manifest behaves identically to a generated one.
 - **Prefer `premo <verb>` over the raw tool** when wiring exists, so behavior stays consistent across repos.
-- premo only reads `premo.json` and shells out — it never mutates your toolchain. Safe to run.
+- premo only reads `premo.json` and shells out — no telemetry, no network of its own. But it **runs the commands the project declares**, so only invoke it in repositories you trust (same as `npm run`). See [SECURITY.md](./SECURITY.md).
 
 ## Contributing to premo itself
 
