@@ -1,0 +1,13 @@
+{
+  // The shippable build: emits only bin + src to dist/ (no tests), so the
+  // published package (files: ["dist"]) never carries test code.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["bin/**/*", "src/**/*"],
+  "exclude": ["node_modules", "dist", "test"]
+}

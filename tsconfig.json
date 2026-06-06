@@ -1,10 +1,11 @@
 {
+  // Project-wide config for the editor and `yarn typecheck` — covers tests too,
+  // but never emits. The shippable build uses tsconfig.build.json.
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    "outDir": "dist",
     "rootDir": ".",
     "strict": true,
     "noUnusedLocals": true,
@@ -14,9 +15,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "sourceMap": true
+    "noEmit": true
   },
-  "include": ["bin/**/*", "src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist", "test/tmp"]
+  "include": ["bin/**/*", "src/**/*", "test/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }
