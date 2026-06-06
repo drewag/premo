@@ -32,18 +32,18 @@ Humans get muscle memory; agents get a contract. Both press the same buttons.
 premo resolves each verb through three tiers (first hit wins):
 
 1. **Explicit config** — a `premo.json` maps the verb to a command. Always wins.
-2. **Built-in adapter** — premo sniffs the repo (npm/yarn scripts, yarn workspaces, Xcode…) and supplies a sensible default, so a standard repo Just Works with zero config.
+2. **Built-in adapter** — premo sniffs the repo (npm/yarn/pnpm scripts, workspaces, Xcode…) and supplies a sensible default, so a standard repo Just Works with zero config.
 3. **Helpful not-implemented** — neither resolves it → an actionable message telling you the next move, never a crash.
 
 premo only ever reads a `premo.json` and shells out to your real toolchain. Uninstalling it breaks nothing.
 
 ## Supported stacks
 
-| Adapter           | What it covers                                                               |
-| ----------------- | ---------------------------------------------------------------------------- |
-| `node-scripts`    | Single-package Node app — maps verbs to your `package.json` scripts          |
-| `yarn-workspaces` | A workspaces monorepo — one target per package, affected-aware               |
-| `xcode`           | Native iOS/macOS apps — build/test/run on a simulator or device from the CLI |
+| Adapter        | What it covers                                                                      |
+| -------------- | ----------------------------------------------------------------------------------- |
+| `node-scripts` | Single-package Node app — maps verbs to your `package.json` scripts                 |
+| `workspaces`   | A monorepo (yarn/npm `workspaces` or pnpm) — one target per package, affected-aware |
+| `xcode`        | Native iOS/macOS apps — build/test/run on a simulator or device from the CLI        |
 
 Unknown stacks still respond with a helpful message; `premo adopt` writes a starter `premo.json` you can edit. Adding an adapter is the main way to contribute — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
@@ -92,9 +92,12 @@ Requires Node 22+.
 
 ```bash
 yarn install
-yarn test       # unit tests
-yarn lint       # eslint + prettier
-yarn build      # typecheck / emit to dist/
+yarn test              # unit tests (fast)
+yarn test:integration  # drives the built binary against fixture repos
+yarn test:coverage     # unit coverage report
+yarn typecheck         # type-check everything (incl. tests)
+yarn lint              # eslint + prettier
+yarn build             # emit dist/ (bin + src)
 ```
 
 ## About the name

@@ -11,10 +11,10 @@ describe("adopt (integration)", () => {
     expect(out.targets).toContain("app");
   });
 
-  it("detects a yarn-workspaces monorepo with a target per package", async () => {
+  it("detects a workspaces monorepo with a target per package", async () => {
     const dir = await makeWorkspaces();
     const out = JSON.parse((await runPremo(["adopt", "--json"], { cwd: dir })).stdout);
-    expect(out.adapter).toBe("yarn-workspaces");
+    expect(out.adapter).toBe("workspaces");
     expect(new Set(out.targets)).toEqual(new Set(["a", "b"]));
   });
 

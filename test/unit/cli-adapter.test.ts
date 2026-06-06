@@ -108,11 +108,11 @@ describe("cli adapter", () => {
     expect((await detectAdapter(root))?.name).toBe("cli");
   });
 
-  it("yields to yarn-workspaces for a workspace repo that also has a bin", async () => {
+  it("yields to workspaces for a monorepo that also has a bin", async () => {
     const root = await tmp();
     await pkg(root, { name: "mono", bin: "./dist/cli.js", workspaces: ["app"] });
     await pkg(path.join(root, "app"), { name: "app", scripts: { build: "x" } });
-    expect((await detectAdapter(root))?.name).toBe("yarn-workspaces");
+    expect((await detectAdapter(root))?.name).toBe("workspaces");
   });
 
   it("carries kind 'command' through resolveTargets", async () => {

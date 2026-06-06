@@ -219,7 +219,7 @@ See §6.1 — they exist to manage `dev --background` and read from the same `.p
 Built-in detectors that supply default verb commands (and enumerate targets) with zero config:
 
 - **xcode** (first; native Apple apps) — detects a root `.xcodeproj`/`.xcworkspace`; one target per project, `premo test` runs the whole scheme (unit + UI). Its `adopt()` hook (see below) runs `xcodebuild -list` once to bake the scheme, bundle id, a pinned default simulator (`xcode.defaultDestination`), and concrete `dev`/`build`/`test` commands. The verbs are otherwise static strings; the one runtime variable — _which simulator/device to run on_ — is resolved per-invocation (the `--device`/`--platform` flag → the pinned default → an interactive picker on a TTY) and injected as `PREMO_XCODE_DEST`, the single seam through which device choice reaches the otherwise-static command. `dev` builds → boots the sim → installs → launches with streamed logs in the foreground (macOS opens the built `.app`).
-- **yarn-workspaces** (matches the reference projects) — reads root `package.json` `workspaces`; each workspace is a target with `dirs: ["<path>/"]`; verb commands map to `yarn workspace <t> <script>` when the script exists.
+- **workspaces** (matches the reference projects) — reads workspace globs from `package.json` `workspaces` (yarn/npm) or `pnpm-workspace.yaml`; each workspace is a target with `dirs: ["<path>/"]`; verb commands map to the detected package manager's `<script>` when it exists.
 - **package.json scripts** (single-package node) — maps verbs to `yarn <script>` / `npm run <script>` when present.
 - Future: Cargo, Go, Make passthrough, etc. — each new adapter fills a column of the (verb × project-type) matrix.
 

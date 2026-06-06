@@ -1,5 +1,5 @@
 import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
-import { yarnWorkspacesAdapter } from "./yarn-workspaces.js";
+import { workspacesAdapter } from "./workspaces.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
 import { xcodeAdapter } from "./xcode.js";
 import { cliAdapter } from "./cli.js";
@@ -29,9 +29,9 @@ export interface Adapter {
 }
 
 // Order matters: more specific adapters first. cli (a `bin` package) sits
-// between yarn-workspaces (a monorepo with a root bin stays a monorepo) and
+// between workspaces (a monorepo with a root bin stays a monorepo) and
 // node-scripts (which matches any package.json, so cli must win first).
-const ADAPTERS: Adapter[] = [xcodeAdapter, yarnWorkspacesAdapter, cliAdapter, nodeScriptsAdapter];
+const ADAPTERS: Adapter[] = [xcodeAdapter, workspacesAdapter, cliAdapter, nodeScriptsAdapter];
 
 export async function detectAdapter(root: string): Promise<Adapter | null> {
   for (const adapter of ADAPTERS) {

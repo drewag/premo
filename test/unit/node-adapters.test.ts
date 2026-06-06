@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { detectAdapter } from "../../src/core/adapters/index.js";
 import { nodeScriptsAdapter } from "../../src/core/adapters/node-scripts.js";
-import { yarnWorkspacesAdapter } from "../../src/core/adapters/yarn-workspaces.js";
+import { workspacesAdapter } from "../../src/core/adapters/workspaces.js";
 
 async function tmp(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "premo-adapter-"));
@@ -77,7 +77,7 @@ describe("node-scripts adapter", () => {
   });
 });
 
-describe("yarn-workspaces adapter", () => {
+describe("workspaces adapter", () => {
   it("expands workspace globs and literals into one target each", async () => {
     const root = await tmp();
     await pkg(root, { name: "mono", private: true, workspaces: ["packages/*", "app"] });
@@ -85,13 +85,27 @@ describe("yarn-workspaces adapter", () => {
     await pkg(path.join(root, "packages/b"), { name: "b", scripts: { test: "echo b" } });
     await pkg(path.join(root, "app"), { name: "app", scripts: { dev: "serve" } });
 
-    expect(await yarnWorkspacesAdapter.detect(root)).toBe(true);
-    const targets = await yarnWorkspacesAdapter.targets(root);
+    expect(await workspacesAdapter.detect(root)).toBe(true);
+    const targets = await workspacesAdapter.targets(root);
     const byName = Object.fromEntries(targets.map((t) => [t.name, t]));
     expect(Object.keys(byName).sort()).toEqual(["a", "app", "b"]);
     expect(byName.a!.dirs).toEqual(["packages/a/"]);
-    expect(await yarnWorkspacesAdapter.command("build", byName.a!, root)).toBe("yarn build");
-    expect(await yarnWorkspacesAdapter.command("build", byName.b!, root)).toBeNull();
+    expect(await workspacesAdapter.command("build", byName.a!, root)).toBe("yarn build");
+    expect(await workspacesAdapter.command("build", byName.b!, root)).toBeNull();
+  });
+
+  it("detects a pnpm-workspace.yaml monorepo and uses pnpm for commands", async () => {
+    const root = await tmp();
+    await pkg(root, { name: "mono" }); // no `workspaces` field
+    await writeFile(path.join(root, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n');
+    await writeFile(path.join(root, "pnpm-lock.yaml"), "");
+    await pkg(path.join(root, "packages/x"), { name: "x", scripts: { build: "tsc" } });
+
+    expect(await workspacesAdapter.detect(root)).toBe(true);
+    const [t] = await workspacesAdapter.targets(root);
+    expect(t!.name).toBe("x");
+    expect(await workspacesAdapter.command("build", t!, root)).toBe("pnpm build");
+    expect((await detectAdapter(root))?.name).toBe("workspaces");
   });
 
   it("is chosen over node-scripts when workspaces exist", async () => {
@@ -99,7 +113,7 @@ describe("yarn-workspaces adapter", () => {
     await pkg(root, { name: "mono", workspaces: ["app"] });
     await pkg(path.join(root, "app"), { name: "app", scripts: { build: "x" } });
     const adapter = await detectAdapter(root);
-    expect(adapter?.name).toBe("yarn-workspaces");
+    expect(adapter?.name).toBe("workspaces");
   });
 
   it("falls back to node-scripts for a plain package", async () => {

@@ -1,15 +1,40 @@
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import type { Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
 import { type Adapter, type DetectedTarget } from "./index.js";
-import { detectPackageManager, readPackageJson, scriptCommandForVerb } from "./node-shared.js";
+import {
+  detectPackageManager,
+  type PackageJson,
+  readPackageJson,
+  scriptCommandForVerb,
+} from "./node-shared.js";
 
-function workspacePatterns(
-  ws: NonNullable<Awaited<ReturnType<typeof readPackageJson>>>["workspaces"],
-): string[] {
+// Workspace globs from a package.json `workspaces` field (yarn + npm).
+function packageJsonPatterns(ws: PackageJson["workspaces"]): string[] {
   if (!ws) return [];
   return Array.isArray(ws) ? ws : (ws.packages ?? []);
+}
+
+// Workspace globs from pnpm-workspace.yaml (`packages:`).
+async function pnpmPatterns(root: string): Promise<string[]> {
+  const file = path.join(root, "pnpm-workspace.yaml");
+  if (!existsSync(file)) return [];
+  try {
+    const doc = parseYaml(await readFile(file, "utf8")) as { packages?: string[] };
+    return Array.isArray(doc?.packages) ? doc.packages : [];
+  } catch {
+    return [];
+  }
+}
+
+// The repo's workspace globs, however the package manager declares them.
+async function workspaceGlobs(root: string): Promise<string[]> {
+  const pkg = await readPackageJson(root);
+  const fromPkg = packageJsonPatterns(pkg?.workspaces);
+  return fromPkg.length ? fromPkg : pnpmPatterns(root);
 }
 
 // Expand a workspace pattern (`packages/*`, `apps/*`, or a literal `frontend`)
@@ -32,18 +57,18 @@ async function expandPattern(root: string, pattern: string): Promise<string[]> {
   return dirs;
 }
 
-// Yarn/npm workspaces monorepo: one target per workspace package.
-export const yarnWorkspacesAdapter: Adapter = {
-  name: "yarn-workspaces",
+// Workspaces monorepo (yarn / npm `workspaces`, or pnpm-workspace.yaml): one
+// target per workspace package. The detected package manager drives the
+// per-package commands (`yarn`/`npm run`/`pnpm <script>`).
+export const workspacesAdapter: Adapter = {
+  name: "workspaces",
 
   async detect(root: string): Promise<boolean> {
-    const pkg = await readPackageJson(root);
-    return workspacePatterns(pkg?.workspaces).length > 0;
+    return (await workspaceGlobs(root)).length > 0;
   },
 
   async targets(root: string): Promise<DetectedTarget[]> {
-    const pkg = await readPackageJson(root);
-    const patterns = workspacePatterns(pkg?.workspaces);
+    const patterns = await workspaceGlobs(root);
     const seen = new Set<string>();
     const targets: DetectedTarget[] = [];
 
@@ -67,7 +92,7 @@ export const yarnWorkspacesAdapter: Adapter = {
   },
 
   async command(verb: Verb, target: DetectedTarget, root: string): Promise<string | null> {
-    // Run from the workspace dir itself, so `yarn <script>` resolves to it.
+    // Run from the workspace dir itself, so `<pm> <script>` resolves to it.
     return scriptCommandForVerb(verb, target.scripts, detectPackageManager(root));
   },
 };

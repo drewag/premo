@@ -64,7 +64,7 @@ export async function makeNodeApp(scripts?: Record<string, string>): Promise<str
   return dir;
 }
 
-// A yarn-workspaces monorepo with two packages, each build echoing its marker.
+// A workspaces monorepo with two packages, each build echoing its marker.
 export async function makeWorkspaces(): Promise<string> {
   const dir = await tmp("ws");
   await writeJson(path.join(dir, "package.json"), {

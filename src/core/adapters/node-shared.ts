@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Verb } from "../../manifest/types.js";
 
-// Shared helpers for the Node-based adapters (node-scripts, yarn-workspaces, cli).
+// Shared helpers for the Node-based adapters (node-scripts, workspaces, cli).
 
 export type PackageManager = "yarn" | "npm" | "pnpm";
 
