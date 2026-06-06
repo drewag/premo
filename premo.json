@@ -10,7 +10,7 @@
     }
   },
   "commands": {
-    "dev": "yarn --silent tsx bin/premo.ts",
+    "dev": "sh bin/dev.sh",
     "deploy": "npm publish"
   }
 }
