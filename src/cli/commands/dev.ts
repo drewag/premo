@@ -5,7 +5,7 @@ import pc from "picocolors";
 import { ensureContext, type Context } from "../../core/context.js";
 import { resolveTargets, type Target } from "../../core/targets.js";
 import { spawnDetached } from "../../core/supervise.js";
-import { shq } from "../../core/xcode.js";
+import { shq } from "../../core/shell.js";
 import { log } from "../../core/logger.js";
 import { resolveXcodeEnv } from "../xcode-env.js";
 

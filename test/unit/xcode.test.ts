@@ -19,7 +19,6 @@ import {
   findXcodeProject,
   listPhysicalDevices,
   resolveDestination,
-  shq,
   xcodeCommands,
   xcodeEnvFor,
 } from "../../src/core/xcode.js";
@@ -334,13 +333,5 @@ describe("ensurePremoGitignore", () => {
 
     await ensurePremoGitignore(root); // no-op the second time
     expect(await readFile(path.join(root, ".gitignore"), "utf8")).toBe(after);
-  });
-});
-
-describe("shq", () => {
-  it("leaves bare words alone and single-quotes the rest", () => {
-    expect(shq("Awooga")).toBe("Awooga");
-    expect(shq("My Scheme")).toBe("'My Scheme'");
-    expect(shq("it's")).toBe("'it'\\''s'");
   });
 });

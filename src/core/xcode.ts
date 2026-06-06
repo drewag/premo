@@ -4,6 +4,7 @@ import { readdirSync } from "node:fs";
 import pc from "picocolors";
 import type { ProjectManifest, XcodeDestination } from "../manifest/types.js";
 import { selectFromList } from "./select.js";
+import { shq } from "./shell.js";
 import { readLastXcodeDest, writeLastXcodeDest } from "./local.js";
 
 // --- locating the project/workspace --------------------------------------
@@ -403,9 +404,4 @@ export async function xcodeEnvFor(
   if (dest.deviceUdid) env.PREMO_XCODE_DEVICE_UDID = dest.deviceUdid;
   if (manifest.xcode?.bundleId) env.PREMO_XCODE_BUNDLE_ID = manifest.xcode.bundleId;
   return env;
-}
-
-// Shell-quote a value for safe interpolation into a command string.
-export function shq(value: string): string {
-  return /^[A-Za-z0-9._/-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
