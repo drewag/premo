@@ -11,6 +11,9 @@ export interface Target {
   affectsExcept: string[];
   cwd: string;
   commands: Partial<Record<Verb, string>>;
+  // "service" (server) vs "command" (run-once/interactive CLI). Drives the dev
+  // run strategy (piped multiplex vs inherited TTY) and port allocation.
+  kind: "service" | "command";
 }
 
 async function adapterFor(root: string, manifest: ProjectManifest): Promise<Adapter | null> {
@@ -52,6 +55,7 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
       affectsExcept: cfg?.affectsExcept ?? [],
       cwd,
       commands,
+      kind: det?.kind ?? "service",
     });
   }
 
@@ -69,6 +73,7 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
       affectsExcept: [],
       cwd: root,
       commands,
+      kind: "service",
     });
   }
 

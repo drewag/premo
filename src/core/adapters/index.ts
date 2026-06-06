@@ -5,6 +5,7 @@ import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
 import { yarnWorkspacesAdapter } from "./yarn-workspaces.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
 import { xcodeAdapter } from "./xcode.js";
+import { cliAdapter } from "./cli.js";
 
 // A target as discovered by an adapter, before it's merged with manifest config.
 export interface DetectedTarget {
@@ -12,6 +13,10 @@ export interface DetectedTarget {
   dirs: string[]; // path prefixes (relative to root) this target owns
   cwd: string; // absolute dir to run this target's commands in
   scripts: Record<string, string>; // package.json scripts, if any
+  // "service" (long-running server: piped/prefixed dev, earns a port) vs
+  // "command" (run-once/interactive tool: inherited-TTY dev, no port). Default
+  // service when omitted.
+  kind?: "service" | "command";
 }
 
 export interface Adapter {
@@ -26,8 +31,10 @@ export interface Adapter {
   adopt?(root: string): Promise<Partial<ProjectManifestInput>>;
 }
 
-// Order matters: more specific adapters first.
-const ADAPTERS: Adapter[] = [xcodeAdapter, yarnWorkspacesAdapter, nodeScriptsAdapter];
+// Order matters: more specific adapters first. cli (a `bin` package) sits
+// between yarn-workspaces (a monorepo with a root bin stays a monorepo) and
+// node-scripts (which matches any package.json, so cli must win first).
+const ADAPTERS: Adapter[] = [xcodeAdapter, yarnWorkspacesAdapter, cliAdapter, nodeScriptsAdapter];
 
 export async function detectAdapter(root: string): Promise<Adapter | null> {
   for (const adapter of ADAPTERS) {
@@ -54,6 +61,9 @@ export interface PackageJson {
   name?: string;
   scripts?: Record<string, string>;
   workspaces?: string[] | { packages?: string[] };
+  bin?: string | Record<string, string>;
+  private?: boolean;
+  devDependencies?: Record<string, string>;
 }
 
 export async function readPackageJson(dir: string): Promise<PackageJson | null> {
@@ -64,6 +74,19 @@ export async function readPackageJson(dir: string): Promise<PackageJson | null> 
   } catch {
     return null;
   }
+}
+
+// The single executable a CLI package exposes. `bin` is either a bare path or a
+// name→path map; for a map prefer the entry matching the package name, else the
+// first. Returns null when there's no bin.
+export function binEntry(pkg: PackageJson): string | null {
+  const bin = pkg.bin;
+  if (!bin) return null;
+  if (typeof bin === "string") return bin;
+  const keys = Object.keys(bin);
+  if (keys.length === 0) return null;
+  const preferred = pkg.name && bin[pkg.name] ? pkg.name : keys[0]!;
+  return bin[preferred]!;
 }
 
 // First matching script for a verb, trying common aliases.

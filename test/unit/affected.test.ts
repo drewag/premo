@@ -3,7 +3,16 @@ import { affectedTargets } from "../../src/core/affected.js";
 import type { Target } from "../../src/core/targets.js";
 
 function t(name: string, dirs: string[], extra: Partial<Target> = {}): Target {
-  return { name, dirs, affects: [], affectsExcept: [], cwd: ".", commands: {}, ...extra };
+  return {
+    name,
+    dirs,
+    affects: [],
+    affectsExcept: [],
+    cwd: ".",
+    commands: {},
+    kind: "service",
+    ...extra,
+  };
 }
 
 describe("affectedTargets", () => {

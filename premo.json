@@ -1,0 +1,16 @@
+{
+  "name": "premo",
+  "version": "0",
+  "adapter": "cli",
+  "targets": {
+    "premo": {
+      "dirs": [
+        "."
+      ]
+    }
+  },
+  "commands": {
+    "dev": "yarn --silent tsx bin/premo.ts",
+    "deploy": "npm publish"
+  }
+}

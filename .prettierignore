@@ -1,7 +1,6 @@
 node_modules/
 dist/
 test/tmp/
-templates/
-strands/*/template/
 coverage/
 yarn.lock
+premo.json

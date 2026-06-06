@@ -3,17 +3,36 @@ import { execa, type ResultPromise } from "execa";
 import path from "node:path";
 import pc from "picocolors";
 import { ensureContext, type Context } from "../../core/context.js";
-import { resolveTargets } from "../../core/targets.js";
+import { resolveTargets, type Target } from "../../core/targets.js";
 import { spawnDetached } from "../../core/supervise.js";
+import { shq } from "../../core/xcode.js";
 import { log } from "../../core/logger.js";
 import { resolveXcodeEnv } from "../xcode-env.js";
 
 const PREFIX_COLORS = [pc.cyan, pc.magenta, pc.yellow, pc.green, pc.blue];
 
+// Split a `dev` invocation's passthrough args from its [target]. Commander erases
+// the `--` boundary and binds [target] to the first operand even when that operand
+// lives *after* `--` — so when `--` is present we take everything after it as
+// passthrough and discard a [target] that's really the first passthrough token.
+export function splitPassthrough(
+  argv: string[],
+  commanderTarget: string | undefined,
+): { target: string | undefined; passthrough: string[] } {
+  const idx = argv.indexOf("--");
+  if (idx === -1) return { target: commanderTarget, passthrough: [] };
+  const passthrough = argv.slice(idx + 1);
+  const target =
+    commanderTarget && commanderTarget !== passthrough[0] ? commanderTarget : undefined;
+  return { target, passthrough };
+}
+
 export function register(program: Command): void {
   program
     .command("dev")
-    .description("Run the project locally; --background to detach.")
+    .description(
+      "Run the project locally; --background to detach. For CLI projects: `dev -- <args>`.",
+    )
     .argument("[target]", "run a single target")
     .option("--background", "run detached; manage with `premo logs` / `premo stop`")
     .option("--device <name>", "destination device/simulator (xcode projects)")
@@ -21,9 +40,10 @@ export function register(program: Command): void {
     .option("-v, --verbose", "show full build logs (xcode projects); hidden by default")
     .action(
       async (
-        target: string | undefined,
+        targetArg: string | undefined,
         opts: { background?: boolean; device?: string; platform?: string; verbose?: boolean },
       ) => {
+        const { target, passthrough } = splitPassthrough(process.argv, targetArg);
         const ctx = await ensureContext(process.cwd());
         // Prompt for a destination interactively, unless detaching; remember it
         // as this project's last-run device for next time.
@@ -32,7 +52,7 @@ export function register(program: Command): void {
           process.exitCode = 1;
           return;
         }
-        await runAdoptedDev(ctx, target, !!opts.background, xcodeEnv);
+        await runAdoptedDev(ctx, target, !!opts.background, xcodeEnv, passthrough);
       },
     );
 }
@@ -42,6 +62,7 @@ async function runAdoptedDev(
   targetArg: string | undefined,
   background: boolean,
   extraEnv: NodeJS.ProcessEnv = {},
+  passthrough: string[] = [],
 ): Promise<void> {
   const targets = await resolveTargets(ctx.root, ctx.manifest);
   let devTargets = targets.filter((t) => t.commands.dev);
@@ -70,6 +91,22 @@ async function runAdoptedDev(
 
   const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
   if (ctx.manifest.ports) env.PORT = String(ctx.manifest.ports.base);
+
+  // A command-style target (a CLI, not a server) runs as one foreground process
+  // over the real TTY, with `-- <args>` passed through. No multiplex/piping.
+  if (devTargets.length === 1 && devTargets[0]!.kind === "command") {
+    if (background) {
+      log.error("`--background` isn't supported for a CLI project (it runs in the foreground).");
+      process.exitCode = 1;
+      return;
+    }
+    await runCommandDev(devTargets[0]!, env, passthrough);
+    return;
+  }
+
+  if (passthrough.length > 0) {
+    log.warn("`-- <args>` passthrough only applies to CLI projects; ignoring.");
+  }
 
   if (background) {
     for (const t of devTargets) {
@@ -120,6 +157,23 @@ async function runAdoptedDev(
 
   await Promise.race(children);
   await shutdown();
+}
+
+// Run a CLI target in the foreground over the inherited TTY (so its own prompts,
+// colors, and Ctrl-C work), appending shell-quoted passthrough args. The exit
+// code is propagated so `premo dev -- <args>` is scriptable.
+async function runCommandDev(
+  t: Target,
+  env: NodeJS.ProcessEnv,
+  passthrough: string[],
+): Promise<void> {
+  const extra = passthrough.length ? " " + passthrough.map(shq).join(" ") : "";
+  const cmd = t.commands.dev! + extra;
+  // Diagnostic to stderr so stdout stays exactly the tool's own output (an agent
+  // can pipe `premo dev -- doctor --json` straight into a JSON parser).
+  process.stderr.write(pc.cyan(`→ Running ${t.name}: ${cmd}\n`));
+  const res = await execa(cmd, { cwd: t.cwd, env, shell: true, stdio: "inherit", reject: false });
+  process.exitCode = res.exitCode ?? 0;
 }
 
 function prefixWrite(prefix: string, buf: Buffer, out: NodeJS.WriteStream): void {
