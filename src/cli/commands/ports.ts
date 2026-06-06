@@ -11,8 +11,9 @@ export function register(program: Command): void {
       const root = findProjectRoot(process.cwd());
       if (!root) {
         if (opts.json) log.json({ error: "not-a-premo-project" });
-        else log.error("Not in a premo project.");
-        process.exit(1);
+        else log.error("Not in a premo project (no premo.json found).");
+        process.exitCode = 1;
+        return;
       }
       const manifest = await loadProject(root);
       if (opts.json) {

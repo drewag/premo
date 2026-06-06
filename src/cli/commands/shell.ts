@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { execa } from "execa";
-import { findProjectRoot, loadProject } from "../../core/project.js";
+import { loadProject } from "../../core/project.js";
+import { requireProjectRoot } from "../guard.js";
 import { interpolateArgv } from "../../core/env.js";
 import type { ShellSpec } from "../../manifest/types.js";
 import { log } from "../../core/logger.js";
@@ -31,11 +32,8 @@ export function register(program: Command): void {
     .description("Open a configured interactive shell (no arg: list shells).")
     .option("-c, --command <cmd>", "run a one-shot command instead of an interactive shell")
     .action(async (name: string | undefined, opts: { command?: string }) => {
-      const root = findProjectRoot(process.cwd());
-      if (!root) {
-        log.error("Not in a premo project (no premo.json found).");
-        process.exit(1);
-      }
+      const root = requireProjectRoot();
+      if (!root) return;
       const manifest = await loadProject(root);
       const shells = manifest.shells;
       const shellNames = Object.keys(shells);
@@ -59,7 +57,8 @@ export function register(program: Command): void {
       const spec = shells[name];
       if (!spec) {
         log.error(`No shell "${name}". Configured: ${shellNames.join(", ") || "none"}`);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       const interpEnv: Record<string, string> = { COMPOSE_PROJECT_NAME: manifest.name };
@@ -73,7 +72,7 @@ export function register(program: Command): void {
         reject: false,
       });
       if (typeof result.exitCode === "number" && result.exitCode !== 0) {
-        process.exit(result.exitCode);
+        process.exitCode = result.exitCode;
       }
     });
 }

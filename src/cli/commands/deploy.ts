@@ -49,13 +49,15 @@ export function register(program: Command): void {
             log.error(
               `No target "${targetArg}". Known: ${targets.map((x) => x.name).join(", ") || "none"}`,
             );
-            process.exit(1);
+            process.exitCode = 1;
+            return;
           }
           if (!t.commands.deploy) {
             log.error(
               `Target "${targetArg}" has no deploy command (set commands.deploy in premo.json).`,
             );
-            process.exit(1);
+            process.exitCode = 1;
+            return;
           }
           deployable = [t];
         }
@@ -70,14 +72,16 @@ export function register(program: Command): void {
         const env = opts.env ?? envs[0]!;
         if (!envs.includes(env)) {
           log.error(`Unknown env "${env}". Configured: ${envs.join(", ")}`);
-          process.exit(1);
+          process.exitCode = 1;
+          return;
         }
         const multiEnv = envs.length > 1;
 
         const head = await headCommit(ctx.root);
         if (!head) {
           log.error("Not a git repository (or no commits yet).");
-          process.exit(1);
+          process.exitCode = 1;
+          return;
         }
         const branch = await currentBranch(ctx.root);
 

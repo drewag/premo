@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { execa } from "execa";
-import { findProjectRoot, loadProject } from "../../core/project.js";
+import { loadProject } from "../../core/project.js";
+import { requireProjectRoot } from "../guard.js";
 import { interpolateEnv } from "../../core/env.js";
 import { log } from "../../core/logger.js";
 
@@ -9,11 +10,8 @@ export function register(program: Command): void {
     .command("open")
     .description("Open the project's URL in the browser.")
     .action(async () => {
-      const root = findProjectRoot(process.cwd());
-      if (!root) {
-        log.error("Not in a premo project (no premo.json found).");
-        process.exit(1);
-      }
+      const root = requireProjectRoot();
+      if (!root) return;
       const manifest = await loadProject(root);
       if (!manifest.ports && !manifest.openUrl) {
         log.warn("No port is allocated for this project, so there's no URL to open.");
@@ -31,12 +29,13 @@ async function launch(url: string): Promise<void> {
   const opener = platformOpener();
   if (!opener) {
     log.error(`No known opener for platform ${process.platform}.`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   await execa(opener[0]!, [...opener.slice(1), url], { detached: true, stdio: "ignore" }).catch(
     (e: Error) => {
       log.error(`Failed to launch opener: ${e.message}`);
-      process.exit(1);
+      process.exitCode = 1;
     },
   );
 }

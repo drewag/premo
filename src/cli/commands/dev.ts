@@ -73,11 +73,13 @@ async function runAdoptedDev(
       log.error(
         `No target "${targetArg}". Known: ${targets.map((x) => x.name).join(", ") || "none"}`,
       );
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     if (!t.commands.dev) {
       log.error(`Target "${targetArg}" has no dev command.`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     devTargets = [t];
   }
