@@ -38,7 +38,8 @@ async function affectedNames(ctx: Context, targets: Target[]): Promise<Set<strin
   return affectedTargets(files, targets);
 }
 
-async function select(ctx: Context, opts: VerbOptions): Promise<Selection> {
+// Returns null when an explicitly-named target doesn't exist (the caller fails).
+async function select(ctx: Context, opts: VerbOptions): Promise<Selection | null> {
   const targets = await resolveTargets(ctx.root, ctx.manifest);
 
   if (opts.target) {
@@ -47,7 +48,7 @@ async function select(ctx: Context, opts: VerbOptions): Promise<Selection> {
       log.error(
         `No target "${opts.target}". Known: ${targets.map((x) => x.name).join(", ") || "none"}`,
       );
-      process.exit(1);
+      return null;
     }
     return { targets: [t], note: `target ${t.name}` };
   }
@@ -67,7 +68,12 @@ async function select(ctx: Context, opts: VerbOptions): Promise<Selection> {
 
 // Run a verb across the selected targets, stopping on the first failure.
 export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Promise<void> {
-  const { targets, note } = await select(ctx, opts);
+  const selection = await select(ctx, opts);
+  if (!selection) {
+    process.exitCode = 1;
+    return;
+  }
+  const { targets, note } = selection;
   if (note) log.dim(`  ${note}`);
 
   const runnable = targets.filter((t) => t.commands[verb]);
