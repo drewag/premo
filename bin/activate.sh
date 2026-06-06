@@ -9,6 +9,22 @@
 # Nothing is written to disk, $PATH, or any rc file. Exiting the shell
 # cleans everything up automatically.
 
+# This file must be SOURCED, not executed — it defines functions in your shell.
+# Bail with guidance if it was run directly (which would also misparse under sh).
+_premo_sourced=0
+if [ -n "$ZSH_VERSION" ]; then
+  case "$ZSH_EVAL_CONTEXT" in *:file*) _premo_sourced=1 ;; esac
+elif [ -n "$BASH_VERSION" ]; then
+  [ "${BASH_SOURCE[0]}" != "$0" ] && _premo_sourced=1
+fi
+if [ "$_premo_sourced" = 0 ]; then
+  echo "premo: source this file, don't run it:" >&2
+  echo "  source ${BASH_SOURCE[0]:-$0}" >&2
+  echo "(it defines a 'premo' function in your current shell; zsh or bash)" >&2
+  exit 1
+fi
+unset _premo_sourced
+
 # Resolve the premo repo root regardless of caller's cwd. Works under
 # bash (uses BASH_SOURCE) and zsh (falls back to $0 when sourced).
 _premo_self="${BASH_SOURCE[0]:-$0}"
