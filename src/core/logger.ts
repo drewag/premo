@@ -7,4 +7,7 @@ export const log = {
   warn: (msg: string) => console.log(pc.yellow(`! ${msg}`)),
   error: (msg: string) => console.error(pc.red(`✗ ${msg}`)),
   dim: (msg: string) => console.log(pc.dim(msg)),
+  // Machine-readable output for `--json` modes: pretty-printed to stdout, never
+  // colorized, so an agent can parse it directly.
+  json: (value: unknown) => console.log(JSON.stringify(value, null, 2)),
 };

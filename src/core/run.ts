@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import type { Verb } from "../premo-api/types.js";
+import type { Verb } from "../manifest/types.js";
 import type { Context } from "./context.js";
 import { resolveTargets, type Target } from "./targets.js";
 import { changedFiles } from "./git.js";
@@ -75,8 +75,9 @@ export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Prom
     const where = targets.length === 0 ? "this project" : "the selected target(s)";
     log.warn(`No \`${verb}\` command resolved for ${where}.`);
     log.dim(
-      '  add one under "commands" (or targets.<name>.commands) in premo.json, or run `premo adopt`.',
+      '  add one under "commands" (or targets.<name>.commands) in premo.json, run `premo adopt`,',
     );
+    log.dim("  or `premo skill` to generate a task file for a coding agent to wire it up.");
     process.exitCode = 1;
     return;
   }

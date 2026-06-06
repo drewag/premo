@@ -2,19 +2,40 @@
   "name": "premo",
   "version": "0.0.0",
   "description": "A universal remote for your projects — one set of verbs (dev, build, test, lint, deploy) that works the same way in every repo.",
+  "keywords": [
+    "cli",
+    "task-runner",
+    "monorepo",
+    "developer-tools",
+    "agent",
+    "ai"
+  ],
+  "homepage": "https://github.com/drewag/premo#readme",
+  "bugs": "https://github.com/drewag/premo/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drewag/premo.git"
+  },
+  "license": "MIT",
+  "author": "Andrew Wagner",
   "type": "module",
   "private": true,
   "bin": {
-    "premo": "./bin/premo.ts"
+    "premo": "./dist/bin/premo.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "premo": "tsx bin/premo.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint . && prettier --check .",
     "lint:fix": "eslint --fix . && prettier --write .",
-    "test": "yarn test:unit",
-    "test:unit": "vitest run --project=unit",
-    "test:watch": "vitest --project=unit"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "yarn build"
   },
   "engines": {
     "node": ">=22"

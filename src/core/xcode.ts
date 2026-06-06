@@ -2,7 +2,7 @@ import { execa } from "execa";
 import { readdir } from "node:fs/promises";
 import { readdirSync } from "node:fs";
 import pc from "picocolors";
-import type { ProjectManifest, XcodeDestination } from "../premo-api/types.js";
+import type { ProjectManifest, XcodeDestination } from "../manifest/types.js";
 import { selectFromList } from "./select.js";
 import { readLastXcodeDest, writeLastXcodeDest } from "./local.js";
 

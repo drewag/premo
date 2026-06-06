@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { ProjectManifest, type ProjectManifestInput } from "../premo-api/types.js";
+import { ProjectManifest, type ProjectManifestInput } from "../manifest/types.js";
 
 export const PROJECT_FILE = "premo.json";
 

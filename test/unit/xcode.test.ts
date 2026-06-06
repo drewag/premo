@@ -6,7 +6,7 @@ import path from "node:path";
 vi.mock("execa", () => ({ execa: vi.fn() }));
 import { execa } from "execa";
 
-import { ProjectManifest } from "../../src/premo-api/types.js";
+import { ProjectManifest } from "../../src/manifest/types.js";
 import { detectAdapter } from "../../src/core/adapters/index.js";
 import { xcodeAdapter } from "../../src/core/adapters/xcode.js";
 import { readFile } from "node:fs/promises";

@@ -5,12 +5,12 @@ import path from "node:path";
 import { DEFAULT_BASE_MIN, DEFAULT_BASE_MAX, defaultBaseForProject } from "../../src/core/ports.js";
 
 describe("global port registry", () => {
-  let allocatePortBlock: typeof import("../../src/core/registry.js").allocatePortBlock;
-  let getAllocation: typeof import("../../src/core/registry.js").getAllocation;
+  let allocatePortBlock: typeof import("../../src/core/port-registry.js").allocatePortBlock;
+  let getAllocation: typeof import("../../src/core/port-registry.js").getAllocation;
 
   beforeAll(async () => {
     process.env.PREMO_HOME = await mkdtemp(path.join(tmpdir(), "premo-home-"));
-    const mod = await import("../../src/core/registry.js");
+    const mod = await import("../../src/core/port-registry.js");
     allocatePortBlock = mod.allocatePortBlock;
     getAllocation = mod.getAllocation;
   });

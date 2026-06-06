@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import pc from "picocolors";
-import { VERBS, type Verb } from "../premo-api/types.js";
+import { VERBS, type Verb } from "../manifest/types.js";
 import { inspectContext } from "../core/context.js";
 import { resolveTargets } from "../core/targets.js";
 import { log } from "../core/logger.js";
@@ -9,7 +9,7 @@ import { log } from "../core/logger.js";
 // whichever verbs are wired), versus premo-management commands. `shell` is
 // conditionally active — only when the project declares one.
 const PROJECT_HELPERS = ["open", "logs", "stop"];
-const META = ["doctor", "adopt", "ports"];
+const META = ["doctor", "adopt", "skill", "ports"];
 
 // True when the invocation is a request for the top-level overview — no
 // subcommand, or a bare help flag. `premo build --help` is NOT top-level.

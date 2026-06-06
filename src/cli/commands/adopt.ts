@@ -8,13 +8,30 @@ export function register(program: Command): void {
   program
     .command("adopt")
     .description("Detect this project's stack and write a premo.json.")
-    .action(async () => {
+    .option("--json", "emit machine-readable JSON")
+    .action(async (opts: { json?: boolean }) => {
       const cwd = process.cwd();
-      if (findProjectRoot(cwd)) {
-        log.warn(`${PROJECT_FILE} already exists — edit it directly, or delete it to re-adopt.`);
+      const existing = findProjectRoot(cwd);
+      if (existing) {
+        if (opts.json) log.json({ adopted: false, reason: "already-adopted", root: existing });
+        else
+          log.warn(`${PROJECT_FILE} already exists — edit it directly, or delete it to re-adopt.`);
         return;
       }
       const root = (await gitRoot(cwd)) ?? cwd;
-      await adoptProject(root);
+      const manifest = await adoptProject(root, { quiet: opts.json });
+      if (opts.json) {
+        log.json({
+          adopted: true,
+          root,
+          file: PROJECT_FILE,
+          name: manifest.name,
+          adapter: manifest.adapter ?? null,
+          targets: Object.keys(manifest.targets),
+          commands: manifest.commands,
+          ports: manifest.ports ?? null,
+          xcode: manifest.xcode ?? null,
+        });
+      }
     });
 }

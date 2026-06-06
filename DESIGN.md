@@ -311,8 +311,9 @@ premo grew out of a project _scaffolder_ — composing a typed monorepo from reu
   - yarn-workspaces + node-scripts adapters; `premo adopt` (auto-adopt on first touch) + helpful not-implemented messages; global port registry; `doctor` as the read-only wiring surface; project-aware grouped help; `shells` contract.
 - **v0.2 (shipped):** `deploy` — `YYYY.MM.DD.N` version from release tags, per-target `deployed/<target>` ff-only advance + `release/<target>/<version>` tag pushed to origin, change listing, confirmation, single-env default with multi-env spec'd.
 - **v0.2.x (shipped):** the `xcode` adapter — detect `.xcodeproj`/`.xcworkspace`, build/test/run on a simulator or device, interactive destination picker with a remembered last device, baked commands via `adopt`.
-- **v0.3:** worktree support (§9.1); per-file `lint`; a static-site deploy adapter (auto-discover the `deploy/deploy.sh` contract); the rename/extraction out of the scaffolder into this standalone repo.
-- **Later:** skill tier (`SKILL.md` emission for novel stacks) + promotion tooling; data-branch design pass.
+- **v0.2.x (shipped):** the **skill tier** — `premo skill` emits a `SKILL.md` (a self-contained task file) that teaches a coding agent how to finish wiring an unhandled stack, surfaced from the not-implemented and no-adapter paths. Plus the **agent-facing surface**: `--json` on `doctor`/`adopt`/`ports`/`skill`, and a repo-root `AGENTS.md`.
+- **v0.3:** worktree support (§9.1); per-file `lint`; a static-site deploy adapter (auto-discover the `deploy/deploy.sh` contract).
+- **Later:** promotion tooling (skill → configure → convention); npm/pnpm-workspace + more adapters; data-branch design pass.
 
 ### Testing implications
 

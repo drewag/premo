@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { execa } from "execa";
 import { findProjectRoot, loadProject } from "../../core/project.js";
 import { interpolateArgv } from "../../core/env.js";
-import type { ShellSpec } from "../../premo-api/types.js";
+import type { ShellSpec } from "../../manifest/types.js";
 import { log } from "../../core/logger.js";
 
 export interface BuiltShell {

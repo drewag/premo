@@ -1,5 +1,5 @@
-import type { ProjectManifest, Verb } from "../premo-api/types.js";
-import { VERBS } from "../premo-api/types.js";
+import type { ProjectManifest, Verb } from "../manifest/types.js";
+import { VERBS } from "../manifest/types.js";
 import { type Adapter, detectAdapter, getAdapter } from "./adapters/index.js";
 
 // A fully-resolved unit of work: where to run, what it owns (for affected

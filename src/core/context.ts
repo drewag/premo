@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ProjectManifest, type ProjectManifestInput } from "../premo-api/types.js";
+import { ProjectManifest, type ProjectManifestInput } from "../manifest/types.js";
 import {
   PROJECT_FILE,
   findProjectRoot,
@@ -10,7 +10,7 @@ import {
 import { detectAdapter, readPackageJson } from "./adapters/index.js";
 import { ensurePremoGitignore } from "./local.js";
 import { gitRoot } from "./git.js";
-import { allocatePortBlock } from "./registry.js";
+import { allocatePortBlock } from "./port-registry.js";
 import { log } from "./logger.js";
 
 export interface Context {
@@ -66,7 +66,10 @@ export async function ensureContext(cwd: string): Promise<Context> {
 
 // Detect the stack, allocate a conflict-free port block if anything serves,
 // and write premo.json. Idempotent enough to re-run via `premo adopt`.
-export async function adoptProject(root: string): Promise<ProjectManifest> {
+export async function adoptProject(
+  root: string,
+  { quiet = false }: { quiet?: boolean } = {},
+): Promise<ProjectManifest> {
   const adapter = await detectAdapter(root);
   const rootPkg = await readPackageJson(root);
   const name = sanitizeProjectName(rootPkg?.name ?? path.basename(root));
@@ -106,9 +109,12 @@ export async function adoptProject(root: string): Promise<ProjectManifest> {
   const detail = adapter
     ? `detected ${adapter.name}, ${detected.length} target(s)`
     : "no adapter matched";
-  log.ok(`wrote ${PROJECT_FILE} — ${detail}${portInfo}`);
-  if (!adapter) {
-    log.dim('  no commands resolved yet; add them under "commands" in premo.json.');
+  if (!quiet) {
+    log.ok(`wrote ${PROJECT_FILE} — ${detail}${portInfo}`);
+    if (!adapter) {
+      log.dim('  no commands resolved yet; add them under "commands" in premo.json,');
+      log.dim("  or run `premo skill` to generate a task file for a coding agent.");
+    }
   }
   return manifest;
 }

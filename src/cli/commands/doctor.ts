@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import { execa } from "execa";
 import pc from "picocolors";
-import { VERBS, type Verb } from "../../premo-api/types.js";
+import { VERBS, type Verb } from "../../manifest/types.js";
 import { inspectContext } from "../../core/context.js";
-import { resolveTargets, type Target } from "../../core/targets.js";
+import { resolveTargets } from "../../core/targets.js";
 import { isGitRepo, resolveBase } from "../../core/git.js";
 import { listBackground } from "../../core/supervise.js";
 import { log } from "../../core/logger.js";
@@ -71,67 +71,111 @@ const hostChecks: Check[] = [
   },
 ];
 
+// --- gathering (shared by the human and JSON renderers) ---
+
+interface ProjectReport {
+  name: string;
+  root: string;
+  adopted: boolean;
+  adapter: string | null;
+  git: { repo: boolean; base: string | null };
+  ports: { base: number; block: number } | null;
+  background: { name: string; pid: number }[];
+  targets: { name: string; commands: Record<Verb, string | null> }[];
+  unwired: Verb[];
+}
+
+async function gatherProject(cwd: string): Promise<ProjectReport> {
+  const { root, manifest, adopted, adapterName } = await inspectContext(cwd);
+  const repo = await isGitRepo(root);
+  const base = repo ? await resolveBase(root, manifest.changeBase) : null;
+  const bg = await listBackground(root);
+  const resolved = await resolveTargets(root, manifest);
+
+  const targets = resolved.map((t) => ({
+    name: t.name,
+    commands: Object.fromEntries(VERBS.map((v) => [v, t.commands[v] ?? null])) as Record<
+      Verb,
+      string | null
+    >,
+  }));
+  const unwired = [...VERBS].filter((v) => !resolved.some((t) => t.commands[v]));
+
+  return {
+    name: manifest.name,
+    root,
+    adopted,
+    adapter: adapterName,
+    git: { repo, base: base ?? null },
+    ports: manifest.ports
+      ? { base: manifest.ports.base, block: manifest.ports.block ?? 100 }
+      : null,
+    background: bg.map((p) => ({ name: p.name, pid: p.pid })),
+    targets,
+    unwired,
+  };
+}
+
 export function register(program: Command): void {
   program
     .command("doctor")
     .description("Show host prerequisites and which verbs are wired in this project.")
-    .action(async () => {
+    .option("--json", "emit machine-readable JSON")
+    .action(async (opts: { json?: boolean }) => {
+      const host = await Promise.all(
+        hostChecks.map(async (c) => ({ name: c.name, ...(await c.run()) })),
+      );
+      const project = await gatherProject(process.cwd());
+
+      if (opts.json) {
+        log.json({ host, project });
+        return;
+      }
+
       log.info(pc.bold("Host"));
-      for (const check of hostChecks) {
-        const { ok, detail } = await check.run();
-        if (ok) log.ok(`${check.name} — ${detail}`);
-        else log.warn(`${check.name} — ${detail}`);
+      for (const c of host) {
+        if (c.ok) log.ok(`${c.name} — ${c.detail}`);
+        else log.warn(`${c.name} — ${c.detail}`);
       }
       log.info("");
-      await projectSection();
+      renderProject(project);
     });
 }
 
-async function projectSection(): Promise<void> {
-  const cwd = process.cwd();
-  const { root, manifest, adopted, adapterName } = await inspectContext(cwd);
-
+function renderProject(p: ProjectReport): void {
   log.info(pc.bold("Project"));
-  log.info(`  ${manifest.name}  ${pc.dim(root)}`);
+  log.info(`  ${p.name}  ${pc.dim(p.root)}`);
   log.info(
-    `  premo.json   ${adopted ? pc.green("present") : pc.yellow("not yet — auto-adopts on first verb")}`,
+    `  premo.json   ${p.adopted ? pc.green("present") : pc.yellow("not yet — auto-adopts on first verb")}`,
   );
-  log.info(`  adapter       ${adapterName ?? pc.yellow("none (add commands manually)")}`);
+  log.info(`  adapter       ${p.adapter ?? pc.yellow("none (add commands manually)")}`);
 
-  // git / affected readiness
-  if (await isGitRepo(root)) {
-    const base = await resolveBase(root, manifest.changeBase);
+  if (p.git.repo) {
     log.info(
-      base
-        ? `  git           repo; affected detection ready ${pc.dim(`(base ${base})`)}`
+      p.git.base
+        ? `  git           repo; affected detection ready ${pc.dim(`(base ${p.git.base})`)}`
         : `  git           repo; ${pc.yellow("no base ref — build/test will run all targets")}`,
     );
   } else {
     log.info(`  git           ${pc.yellow("not a git repo — build/test will run all targets")}`);
   }
 
-  // ports
   log.info(
-    manifest.ports
-      ? `  ports         ${manifest.ports.base}–${manifest.ports.base + (manifest.ports.block ?? 100) - 1}`
+    p.ports
+      ? `  ports         ${p.ports.base}–${p.ports.base + p.ports.block - 1}`
       : `  ports         ${pc.dim("none allocated")}`,
   );
 
-  // background processes
-  const bg = await listBackground(root);
-  if (bg.length > 0) {
-    log.info(`  background    ${bg.map((p) => `${p.name}(pid ${p.pid})`).join(", ")}`);
+  if (p.background.length > 0) {
+    log.info(`  background    ${p.background.map((b) => `${b.name}(pid ${b.pid})`).join(", ")}`);
   }
 
-  // verb × target matrix
-  const targets = await resolveTargets(root, manifest);
   log.info("");
   log.info(pc.bold("  Verb wiring"));
-  printMatrix(targets);
+  printMatrix(p.targets);
 
-  // gaps
   log.info("");
-  printGaps(targets);
+  printGaps(p.unwired);
 }
 
 function cell(present: boolean, width: number): string {
@@ -139,20 +183,18 @@ function cell(present: boolean, width: number): string {
   return sym + " ".repeat(Math.max(0, width - 1));
 }
 
-function printMatrix(targets: Target[]): void {
+function printMatrix(targets: ProjectReport["targets"]): void {
   const verbs = [...VERBS];
   const nameW = Math.max(6, ...targets.map((t) => t.name.length));
   const header = "  " + "target".padEnd(nameW) + "   " + verbs.join("  ");
   log.info(pc.dim(header));
   for (const t of targets) {
-    const cells = verbs.map((v) => cell(Boolean(t.commands[v as Verb]), v.length)).join("  ");
+    const cells = verbs.map((v) => cell(Boolean(t.commands[v]), v.length)).join("  ");
     log.info("  " + t.name.padEnd(nameW) + "   " + cells);
   }
 }
 
-function printGaps(targets: Target[]): void {
-  const verbs = [...VERBS];
-  const unwired = verbs.filter((v) => !targets.some((t) => t.commands[v as Verb]));
+function printGaps(unwired: Verb[]): void {
   if (unwired.length === 0) {
     log.ok("  all verbs wired");
     return;

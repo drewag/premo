@@ -1,5 +1,5 @@
-#!/usr/bin/env -S npx tsx
-import { buildProgram } from "../src/cli/registry.js";
+#!/usr/bin/env node
+import { buildProgram } from "../src/cli/program.js";
 import { isTopLevelHelp, printGroupedHelp } from "../src/cli/help.js";
 import { register as doctor } from "../src/cli/commands/doctor.js";
 import { register as adopt } from "../src/cli/commands/adopt.js";
@@ -13,6 +13,7 @@ import { register as logs } from "../src/cli/commands/logs.js";
 import { register as ports } from "../src/cli/commands/ports.js";
 import { register as open } from "../src/cli/commands/open.js";
 import { register as shell } from "../src/cli/commands/shell.js";
+import { register as skill } from "../src/cli/commands/skill.js";
 
 const program = buildProgram([
   doctor,
@@ -27,6 +28,7 @@ const program = buildProgram([
   ports,
   open,
   shell,
+  skill,
 ]);
 
 if (isTopLevelHelp(process.argv)) {

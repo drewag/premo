@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { ProjectManifestInput, Verb } from "../../premo-api/types.js";
+import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
 import { yarnWorkspacesAdapter } from "./yarn-workspaces.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
 import { xcodeAdapter } from "./xcode.js";

@@ -6,13 +6,24 @@ export function register(program: Command): void {
   program
     .command("ports")
     .description("Show the port allocation for this project.")
-    .action(async () => {
+    .option("--json", "emit machine-readable JSON")
+    .action(async (opts: { json?: boolean }) => {
       const root = findProjectRoot(process.cwd());
       if (!root) {
-        log.error("Not in a premo project.");
+        if (opts.json) log.json({ error: "not-a-premo-project" });
+        else log.error("Not in a premo project.");
         process.exit(1);
       }
       const manifest = await loadProject(root);
+      if (opts.json) {
+        log.json({
+          name: manifest.name,
+          ports: manifest.ports
+            ? { base: manifest.ports.base, block: manifest.ports.block, port: manifest.ports.base }
+            : null,
+        });
+        return;
+      }
       if (!manifest.ports) {
         log.info(`${manifest.name}  (no ports allocated)`);
         return;
