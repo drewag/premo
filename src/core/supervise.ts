@@ -1,12 +1,25 @@
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
-import { existsSync } from "node:fs";
+import { existsSync, openSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { ensureRuntimeDir, runtimeDir } from "./runtime.js";
 import { type BackgroundProc, loadLocal, saveLocal } from "./local.js";
 
 export type { BackgroundProc };
+
+// `.runtime/` holds background process logs (gitignored). The only consumer is
+// supervision below, so the dir helpers live here.
+const RUNTIME_DIR = ".runtime";
+
+function runtimeDir(root: string): string {
+  return path.join(root, RUNTIME_DIR);
+}
+
+async function ensureRuntimeDir(root: string): Promise<string> {
+  const dir = runtimeDir(root);
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
 
 function isAlive(pid: number): boolean {
   try {

@@ -14,12 +14,6 @@ export async function loadProject(dir: string): Promise<ProjectManifest> {
   return ProjectManifest.parse(raw);
 }
 
-export async function loadProjectIfExists(dir: string): Promise<ProjectManifest | null> {
-  const file = path.join(dir, PROJECT_FILE);
-  if (!existsSync(file)) return null;
-  return loadProject(dir);
-}
-
 export async function saveProject(dir: string, manifest: ProjectManifestInput): Promise<void> {
   const file = path.join(dir, PROJECT_FILE);
   await writeFile(file, JSON.stringify(manifest, null, 2) + "\n", "utf8");
