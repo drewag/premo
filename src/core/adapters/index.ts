@@ -82,6 +82,14 @@ export function scriptCommandForVerb(
 ): string | null {
   const script = SCRIPT_ALIASES[verb].find((s) => scripts[s] !== undefined);
   if (!script) return null;
-  if (pm === "npm") return `npm run ${script}`;
-  return `${pm} ${script}`; // yarn <script> / pnpm <script>
+  const base = pm === "npm" ? `npm run ${script}` : `${pm} ${script}`; // yarn/pnpm <script>
+
+  // Vite ignores strand's $PORT env (unlike Next/CRA), so a `dev` that runs Vite
+  // would bind 5173 and collide across projects. Forward the allocated port as
+  // `--port` when set; `${PORT:+…}` keeps it absent when no port was allocated.
+  if (verb === "dev" && /(^|\s|\/)vite(\s|$)/.test(scripts[script]!)) {
+    const port = "${PORT:+--port $PORT}"; // npm needs `--` before script args
+    return pm === "npm" ? `${base} -- ${port}` : `${base} ${port}`;
+  }
+  return base;
 }

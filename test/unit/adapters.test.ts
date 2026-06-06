@@ -17,7 +17,7 @@ async function pkg(dir: string, contents: object): Promise<void> {
 describe("node-scripts adapter", () => {
   it("detects a package.json and exposes one target with mapped commands", async () => {
     const root = await tmp();
-    await pkg(root, { name: "app", scripts: { build: "tsc", dev: "vite" } });
+    await pkg(root, { name: "app", scripts: { build: "tsc", dev: "next dev" } });
 
     expect(await nodeScriptsAdapter.detect(root)).toBe(true);
     const targets = await nodeScriptsAdapter.targets(root);
@@ -42,6 +42,36 @@ describe("node-scripts adapter", () => {
     await pkg(root, { name: "app", scripts: { start: "node ." } });
     const targets = await nodeScriptsAdapter.targets(root);
     expect(nodeScriptsAdapter.command("dev", targets[0]!, root)).toBe("yarn start");
+  });
+
+  it("forwards strand's port to a Vite dev server (Vite ignores $PORT)", async () => {
+    const root = await tmp();
+    await pkg(root, {
+      name: "app",
+      scripts: { dev: "vite", build: "vite build", test: "vitest run" },
+    });
+    const [t] = await nodeScriptsAdapter.targets(root);
+    expect(nodeScriptsAdapter.command("dev", t!, root)).toBe("yarn dev ${PORT:+--port $PORT}");
+    // not fooled by `vitest`, and build/test stay plain
+    expect(nodeScriptsAdapter.command("build", t!, root)).toBe("yarn build");
+    expect(nodeScriptsAdapter.command("test", t!, root)).toBe("yarn test");
+  });
+
+  it("uses npm's -- passthrough for the Vite port", async () => {
+    const root = await tmp();
+    await pkg(root, { name: "app", scripts: { dev: "vite" } });
+    await writeFile(path.join(root, "package-lock.json"), "{}");
+    const [t] = await nodeScriptsAdapter.targets(root);
+    expect(nodeScriptsAdapter.command("dev", t!, root)).toBe(
+      "npm run dev -- ${PORT:+--port $PORT}",
+    );
+  });
+
+  it("leaves non-Vite dev servers to use $PORT themselves", async () => {
+    const root = await tmp();
+    await pkg(root, { name: "app", scripts: { dev: "node server.js" } });
+    const [t] = await nodeScriptsAdapter.targets(root);
+    expect(nodeScriptsAdapter.command("dev", t!, root)).toBe("yarn dev");
   });
 });
 
