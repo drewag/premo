@@ -18,5 +18,5 @@
     "sourceMap": true
   },
   "include": ["bin/**/*", "src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist", "strands/**/template/**", "test/tmp"]
+  "exclude": ["node_modules", "dist", "test/tmp"]
 }

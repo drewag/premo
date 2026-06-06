@@ -273,9 +273,9 @@ Carried forward from the scaffolder design (still true):
 1. **Yarn classic (1.x) + workspaces.**
 2. **`premo.json` at project root**, versioned (`"version": "0"`). Worktree-local state in `.premo-local.json` (gitignored).
 3. **Node 22 LTS.**
-4. **Tiny custom token replacer** for templates (no Handlebars/EJS).
+4. **Tiny custom token replacer** for `${VAR}` interpolation in `open`/`shell` (no Handlebars/EJS).
 5. **No telemetry, ever.**
-6. **Hash-derived default port base** (30000–49999, 100-port blocks), pinned in `premo.json`. Still used by scaffolded projects and `dev`.
+6. **Hash-derived default port base** (30000–49999, 100-port blocks), allocated on adopt and exported as `$PORT` to `dev`.
 7. **Name: `premo`.** (Latin _premo_, "I press" — you press a button on the remote; also the casual sense of "premium." Free npm name; `premo.sh`.)
 8. **Stack: commander + execa + zod + yaml + picocolors; tsx to run; Vitest to test.**
 
