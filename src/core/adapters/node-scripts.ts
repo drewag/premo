@@ -1,13 +1,8 @@
 import path from "node:path";
 import type { Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
-import {
-  type Adapter,
-  type DetectedTarget,
-  detectPackageManager,
-  readPackageJson,
-  scriptCommandForVerb,
-} from "./index.js";
+import { type Adapter, type DetectedTarget } from "./index.js";
+import { detectPackageManager, readPackageJson, scriptCommandForVerb } from "./node-shared.js";
 
 // Single-package Node project: one target rooted at the repo, commands map to
 // the root package.json scripts via the detected package manager.

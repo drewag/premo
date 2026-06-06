@@ -7,7 +7,8 @@ import {
   saveProject,
   sanitizeProjectName,
 } from "./project.js";
-import { detectAdapter, readPackageJson } from "./adapters/index.js";
+import { detectAdapter } from "./adapters/index.js";
+import { readPackageJson } from "./adapters/node-shared.js";
 import { ensurePremoGitignore } from "./local.js";
 import { gitRoot } from "./git.js";
 import { allocatePortBlock } from "./port-registry.js";

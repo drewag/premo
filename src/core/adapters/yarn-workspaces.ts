@@ -2,13 +2,8 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
-import {
-  type Adapter,
-  type DetectedTarget,
-  detectPackageManager,
-  readPackageJson,
-  scriptCommandForVerb,
-} from "./index.js";
+import { type Adapter, type DetectedTarget } from "./index.js";
+import { detectPackageManager, readPackageJson, scriptCommandForVerb } from "./node-shared.js";
 
 function workspacePatterns(
   ws: NonNullable<Awaited<ReturnType<typeof readPackageJson>>>["workspaces"],

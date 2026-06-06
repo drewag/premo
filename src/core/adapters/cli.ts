@@ -2,15 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
+import { type Adapter, type DetectedTarget } from "./index.js";
 import {
-  type Adapter,
-  type DetectedTarget,
   type PackageJson,
   binEntry,
   detectPackageManager,
   readPackageJson,
   scriptCommandForVerb,
-} from "./index.js";
+} from "./node-shared.js";
 
 // CLI-style Node project: a package with a `bin`, run as a command rather than a
 // dev server. One target at the repo root, kind "command" (inherited-TTY dev, no
