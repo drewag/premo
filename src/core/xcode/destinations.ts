@@ -3,6 +3,7 @@ import pc from "picocolors";
 import type { ProjectManifest, XcodeDestination } from "../../manifest/types.js";
 import { selectFromList } from "../select.js";
 import { readLastXcodeDest } from "../local.js";
+import { log } from "../logger.js";
 
 // Discovering simulators / connected devices and resolving which one a verb runs
 // on (the one runtime variable for the otherwise-static xcode commands).
@@ -135,10 +136,12 @@ export interface ResolveOptions {
   flagPlatform?: string; // --platform: ios|macos|visionos|…
   interactive: boolean; // prompt when no flag and attached to a TTY
   root?: string; // project root, for reading the remembered last destination
+  pick?: boolean; // --pick: re-prompt even when a last-used destination exists
 }
 
 // Resolve which destination to build/run for. Precedence:
-//   --device/--platform flag  →  configured default  →  interactive pick  →  error.
+//   --device/--platform flag  →  configured default (non-interactive)  →
+//   last-used (auto, unless --pick)  →  interactive pick  →  error.
 export async function resolveDestination(opts: ResolveOptions): Promise<Destination> {
   const cfg = opts.manifest.xcode?.defaultDestination;
 
@@ -183,14 +186,23 @@ export async function resolveDestination(opts: ResolveOptions): Promise<Destinat
     );
   }
 
-  // 3. interactive pick. Float the two most likely choices to the top: the
-  // destination last run here (preselected, if still available), then the
-  // configured default. The rest keep their natural order below them.
   const devices = await listPhysicalDevices();
   const all = toMenu(sims, devices);
   const last = opts.root ? await readLastXcodeDest(opts.root) : undefined;
 
   const lastIdx = last ? all.findIndex((d) => d.dest === last.dest) : -1;
+
+  // 3. last-used: if we ran here before and that destination is still available,
+  // reuse it without prompting. `--pick` (or an unplugged device / removed sim,
+  // which drops lastIdx to -1) falls through to the picker below.
+  if (!opts.pick && lastIdx >= 0) {
+    log.step(`Running on ${all[lastIdx]!.label} ${pc.dim("(last used; --pick to choose)")}`);
+    return all[lastIdx]!;
+  }
+
+  // 4. interactive pick. Float the two most likely choices to the top: the
+  // destination last run here (preselected, if still available), then the
+  // configured default. The rest keep their natural order below them.
   const cfgIdx = fromCfg ? all.findIndex((d) => d.dest === fromCfg.dest) : -1;
   const pinned = [lastIdx, cfgIdx].filter((i, k, a) => i >= 0 && a.indexOf(i) === k);
   const order = [...pinned, ...all.map((_, i) => i).filter((i) => !pinned.includes(i))];

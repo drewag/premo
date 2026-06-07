@@ -40,11 +40,18 @@ export function register(program: Command): void {
     .option("--background", "run detached; manage with `premo logs` / `premo stop`")
     .option("--device <name>", "destination device/simulator (xcode projects)")
     .option("--platform <name>", "destination platform: ios | macos | visionos (xcode projects)")
+    .option("--pick", "re-prompt for the destination, ignoring the last used (xcode projects)")
     .option("-v, --verbose", "show full build logs (xcode projects); hidden by default")
     .action(
       async (
         targetArg: string | undefined,
-        opts: { background?: boolean; device?: string; platform?: string; verbose?: boolean },
+        opts: {
+          background?: boolean;
+          device?: string;
+          platform?: string;
+          pick?: boolean;
+          verbose?: boolean;
+        },
       ) => {
         const { target, passthrough } = splitPassthrough(process.argv, targetArg);
         const ctx = await ensureContext(process.cwd());

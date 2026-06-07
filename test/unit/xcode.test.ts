@@ -6,6 +6,16 @@ import path from "node:path";
 vi.mock("execa", () => ({ execa: vi.fn() }));
 import { execa } from "execa";
 
+// Mirror the real (non-TTY) selector: return whatever index was preselected, so
+// tests can assert *whether* the picker was reached without driving keypresses.
+vi.mock("../../src/core/select.js", () => ({
+  selectFromList: vi.fn(
+    async (_items: string[], opts?: { defaultIndex?: number }) => opts?.defaultIndex ?? 0,
+  ),
+}));
+import { selectFromList } from "../../src/core/select.js";
+const mockSelect = selectFromList as unknown as ReturnType<typeof vi.fn>;
+
 import { ProjectManifest } from "../../src/manifest/types.js";
 import { detectAdapter } from "../../src/core/adapters/index.js";
 import { xcodeAdapter } from "../../src/core/adapters/xcode.js";
@@ -52,7 +62,10 @@ function stubSimctl(json = SIMCTL_JSON, xctrace = ""): void {
   });
 }
 
-afterEach(() => mockExeca.mockReset());
+afterEach(() => {
+  mockExeca.mockReset();
+  mockSelect.mockClear();
+});
 
 async function tmp(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "premo-xcode-"));
@@ -277,7 +290,7 @@ describe("last-destination memory", () => {
     expect(await readLastXcodeDest(root)).toMatchObject({ dest: IPHONE, bootUdid: "UDID-IPHONE" });
   });
 
-  it("defaults the picker to the last-run destination over the config default", async () => {
+  it("reuses the last-run destination without prompting (over the config default)", async () => {
     stubSimctl();
     const root = await tmp();
     await writeLastXcodeDest(root, { dest: IPHONE, label: "iPhone 17 Pro" });
@@ -287,9 +300,23 @@ describe("last-destination memory", () => {
       root,
     });
     expect(d.dest).toBe(IPHONE);
+    expect(mockSelect).not.toHaveBeenCalled();
   });
 
-  it("falls back to the config default when the remembered device is gone", async () => {
+  it("re-prompts when --pick is set, even with a last-used destination", async () => {
+    stubSimctl();
+    const root = await tmp();
+    await writeLastXcodeDest(root, { dest: IPHONE, label: "iPhone 17 Pro" });
+    await resolveDestination({
+      manifest: xcodeManifest({ xcode: cfgIpad }),
+      interactive: true,
+      root,
+      pick: true,
+    });
+    expect(mockSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the picker when the remembered device is gone", async () => {
     stubSimctl();
     const root = await tmp();
     await writeLastXcodeDest(root, { dest: "platform=iOS Simulator,id=GONE", label: "Old" });
@@ -299,6 +326,7 @@ describe("last-destination memory", () => {
       root,
     });
     expect(d.dest).toBe(IPAD);
+    expect(mockSelect).toHaveBeenCalledTimes(1);
   });
 
   it("remembers the destination after a run, only when asked", async () => {

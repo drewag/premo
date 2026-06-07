@@ -6,6 +6,7 @@ export interface DestFlags {
   device?: string;
   platform?: string;
   verbose?: boolean;
+  pick?: boolean;
 }
 
 // Resolve the PREMO_XCODE_* env for a verb run. A no-op (empty env) for
@@ -23,6 +24,7 @@ export async function resolveXcodeEnv(
       device: flags.device,
       platform: flags.platform,
       verbose: flags.verbose,
+      pick: flags.pick,
       interactive,
       root: ctx.root,
       remember,

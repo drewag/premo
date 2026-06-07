@@ -18,6 +18,8 @@ export async function xcodeEnvFor(
     root?: string;
     // Persist the chosen destination as this project's last-run device (dev).
     remember?: boolean;
+    // Re-prompt for the destination even if a last-used one is remembered (dev).
+    pick?: boolean;
   },
 ): Promise<NodeJS.ProcessEnv> {
   if (manifest.adapter !== "xcode" && !manifest.xcode) return {};
@@ -27,6 +29,7 @@ export async function xcodeEnvFor(
     flagPlatform: opts.platform,
     interactive: opts.interactive && !opts.device && !opts.platform && !!process.stdin.isTTY,
     root: opts.root,
+    pick: opts.pick,
   });
   if (opts.remember && opts.root) {
     await writeLastXcodeDest(opts.root, {
