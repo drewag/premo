@@ -1,11 +1,13 @@
 import { Command } from "commander";
 import { execa, type ResultPromise } from "execa";
 import path from "node:path";
+import readline from "node:readline";
 import pc from "picocolors";
 import { ensureContext, type Context } from "../../core/context.js";
 import { resolveTargets, type Target } from "../../core/targets.js";
 import { spawnDetached } from "../../core/supervise.js";
 import { shq } from "../../core/shell.js";
+import { installFooter, type Footer } from "../../core/footer.js";
 import { log } from "../../core/logger.js";
 import { resolveXcodeEnv } from "../xcode-env.js";
 
@@ -126,45 +128,107 @@ async function runAdoptedDev(
     return;
   }
 
-  const children: ResultPromise[] = [];
-  let colorIdx = 0;
-  for (const t of devTargets) {
-    const color = PREFIX_COLORS[colorIdx++ % PREFIX_COLORS.length]!;
-    // Multi-line commands (e.g. the xcode build/run script) would flood the
-    // line; show just the target name in that case.
-    log.step(
-      t.commands.dev!.includes("\n")
-        ? `Starting ${t.name}`
-        : `Starting ${t.name} (${t.commands.dev})`,
-    );
-    const proc = execa(t.commands.dev!, {
-      cwd: t.cwd,
-      env,
-      shell: true,
-      stdout: "pipe",
-      stderr: "pipe",
-      reject: false,
-    });
-    const prefix = color(`[${t.name}]`);
-    proc.stdout?.on("data", (b: Buffer) => prefixWrite(prefix, b, process.stdout));
-    proc.stderr?.on("data", (b: Buffer) => prefixWrite(prefix, b, process.stderr));
-    children.push(proc);
-  }
+  let children: ResultPromise[] = [];
+  const spawnAll = () => {
+    children = [];
+    let colorIdx = 0;
+    for (const t of devTargets) {
+      const color = PREFIX_COLORS[colorIdx++ % PREFIX_COLORS.length]!;
+      // Multi-line commands (e.g. the xcode build/run script) would flood the
+      // line; show just the target name in that case.
+      log.step(
+        t.commands.dev!.includes("\n")
+          ? `Starting ${t.name}`
+          : `Starting ${t.name} (${t.commands.dev})`,
+      );
+      const proc = execa(t.commands.dev!, {
+        cwd: t.cwd,
+        env,
+        shell: true,
+        stdout: "pipe",
+        stderr: "pipe",
+        reject: false,
+      });
+      const prefix = color(`[${t.name}]`);
+      proc.stdout?.on("data", (b: Buffer) => prefixWrite(prefix, b, process.stdout));
+      proc.stderr?.on("data", (b: Buffer) => prefixWrite(prefix, b, process.stdout));
+      children.push(proc);
+    }
+  };
 
+  const killChildren = async () => {
+    for (const c of children) if (!c.killed) c.kill("SIGTERM");
+    await Promise.allSettled(children);
+  };
+
+  // A re-armable control signal. A keypress (or an OS signal) resolves the
+  // current wait with an action, so an intentional restart's child exits aren't
+  // mistaken for a crash.
+  let fireControl!: (action: "restart" | "quit") => void;
+  const armControl = () =>
+    new Promise<"restart" | "quit">((resolve) => {
+      fireControl = resolve;
+    });
+  let control = armControl();
+
+  // Single-key controls only when we own a real TTY; under a pipe/CI there are
+  // no keypresses and SIGINT/SIGTERM remain the way out.
+  const interactive = !!process.stdin.isTTY;
+  const wasRaw = process.stdin.isRaw ?? false;
+  const onKey = (_str: string, key: readline.Key | undefined) => {
+    if (!key) return;
+    if (key.name === "r") fireControl("restart");
+    else if (key.name === "q" || (key.ctrl && key.name === "c")) fireControl("quit");
+  };
+  const restoreTty = () => {
+    if (!interactive) return;
+    process.stdin.off("keypress", onKey);
+    process.stdin.setRawMode(wasRaw);
+    process.stdin.pause();
+  };
+
+  let footer: Footer | null = null;
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
-    for (const c of children) if (!c.killed) c.kill("SIGTERM");
-    await Promise.allSettled(children);
+    footer?.clear();
+    restoreTty();
+    await killChildren();
   };
   process.on("SIGINT", () => void shutdown().then(() => process.exit(0)));
   process.on("SIGTERM", () => void shutdown().then(() => process.exit(0)));
 
-  log.ok("dev up — Ctrl-C to stop");
+  spawnAll();
+
+  if (interactive) {
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("keypress", onKey);
+  }
+
+  log.ok(interactive ? "dev up — press r to restart, q to quit" : "dev up — Ctrl-C to stop");
   if (ctx.manifest.ports) log.dim(`  PORT=${ctx.manifest.ports.base}`);
 
-  await Promise.race(children);
+  if (interactive) {
+    const port = ctx.manifest.ports ? ` · PORT ${ctx.manifest.ports.base}` : "";
+    footer = installFooter(` premo dev · r restart · q quit${port} `);
+  }
+
+  for (;;) {
+    const childExit = Promise.race(children.map((c) => c.then(() => "exit" as const)));
+    const action = await Promise.race([childExit, control]);
+    if (action === "restart") {
+      log.step("Restarting…");
+      await killChildren();
+      control = armControl();
+      spawnAll();
+      continue;
+    }
+    // "quit" (key/signal) or "exit" (a target ended on its own) → tear down.
+    break;
+  }
   await shutdown();
 }
 
