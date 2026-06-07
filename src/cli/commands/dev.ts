@@ -8,6 +8,7 @@ import { resolveTargets, type Target } from "../../core/targets.js";
 import { spawnDetached } from "../../core/supervise.js";
 import { shq } from "../../core/shell.js";
 import { installFooter, type Footer } from "../../core/footer.js";
+import { isDeviceLockedError } from "../../core/xcode.js";
 import { log } from "../../core/logger.js";
 import { resolveXcodeEnv } from "../xcode-env.js";
 
@@ -128,9 +129,16 @@ async function runAdoptedDev(
     return;
   }
 
+  // A run targeting a physical iOS device installs/launches via devicectl, which
+  // fails if the device is locked. We watch the output for that so we can prompt
+  // for an unlock + retry rather than dying with a raw devicectl error.
+  const xcodeDevice = !!env.PREMO_XCODE_DEVICE_UDID;
+  let lockDetected = false;
+
   let children: ResultPromise[] = [];
   const spawnAll = () => {
     children = [];
+    lockDetected = false;
     let colorIdx = 0;
     for (const t of devTargets) {
       const color = PREFIX_COLORS[colorIdx++ % PREFIX_COLORS.length]!;
@@ -150,8 +158,14 @@ async function runAdoptedDev(
         reject: false,
       });
       const prefix = color(`[${t.name}]`);
-      proc.stdout?.on("data", (b: Buffer) => prefixWrite(prefix, b, process.stdout));
-      proc.stderr?.on("data", (b: Buffer) => prefixWrite(prefix, b, process.stdout));
+      const onChunk = (b: Buffer) => {
+        if (xcodeDevice && !lockDetected && isDeviceLockedError(b.toString("utf8"))) {
+          lockDetected = true;
+        }
+        prefixWrite(prefix, b, process.stdout);
+      };
+      proc.stdout?.on("data", onChunk);
+      proc.stderr?.on("data", onChunk);
       children.push(proc);
     }
   };
@@ -216,17 +230,43 @@ async function runAdoptedDev(
     footer = installFooter(` premo dev · r restart · q quit${port} `);
   }
 
+  type Event = { kind: "restart" | "quit" } | { kind: "exit"; code: number | null };
+  let awaitingUnlock = false;
   for (;;) {
-    const childExit = Promise.race(children.map((c) => c.then(() => "exit" as const)));
-    const action = await Promise.race([childExit, control]);
-    if (action === "restart") {
-      log.step("Restarting…");
+    const waits: Promise<Event>[] = [control.then((kind) => ({ kind }))];
+    // While we're waiting for the user to unlock, the children are already dead;
+    // race only the control signal so a fresh keypress drives the retry.
+    if (!awaitingUnlock) {
+      waits.push(
+        Promise.race(
+          children.map((c) => c.then((r) => ({ kind: "exit" as const, code: r.exitCode ?? null }))),
+        ),
+      );
+    }
+    const ev = await Promise.race(waits);
+
+    if (ev.kind === "restart") {
+      log.step(awaitingUnlock ? "Retrying…" : "Restarting…");
+      awaitingUnlock = false;
       await killChildren();
       control = armControl();
       spawnAll();
       continue;
     }
-    // "quit" (key/signal) or "exit" (a target ended on its own) → tear down.
+    if (ev.kind !== "exit") break; // "quit"
+
+    // A target ended on its own. If a device run failed because the device is
+    // locked, don't tear down: prompt for an unlock and reuse `r` to retry
+    // (a no-op incremental rebuild, then re-install/launch).
+    if (xcodeDevice && lockDetected && ev.code !== 0) {
+      if (interactive) {
+        awaitingUnlock = true;
+        log.warn("Device is locked. Unlock it, then press r to retry (q to quit).");
+        continue;
+      }
+      log.error("Device is locked — unlock it and run `premo dev` again.");
+      process.exitCode = 1;
+    }
     break;
   }
   await shutdown();

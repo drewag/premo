@@ -17,6 +17,7 @@ import {
 } from "../../src/core/local.js";
 import {
   findXcodeProject,
+  isDeviceLockedError,
   listPhysicalDevices,
   resolveDestination,
   xcodeCommands,
@@ -333,5 +334,29 @@ describe("ensurePremoGitignore", () => {
 
     await ensurePremoGitignore(root); // no-op the second time
     expect(await readFile(path.join(root, ".gitignore"), "utf8")).toBe(after);
+  });
+});
+
+describe("isDeviceLockedError", () => {
+  it("matches the devicectl locked-device phrasings", () => {
+    const samples = [
+      "ERROR: The operation couldn't be completed. The device is locked.",
+      "Unable to launch app because the device was locked.",
+      "...because the device was not, or could not be, unlocked.",
+      "Please unlock iPhone to continue.",
+      "Unlock the device and try again.",
+      "Unlock your iPhone to continue installation.",
+    ];
+    for (const s of samples) expect(isDeviceLockedError(s)).toBe(true);
+  });
+
+  it("does not fire on ordinary build/app output", () => {
+    const samples = [
+      "** BUILD SUCCEEDED **",
+      "Installing app on device…",
+      "AppDelegate: user unlocked a premium feature",
+      "warning: 'foo' is deprecated",
+    ];
+    for (const s of samples) expect(isDeviceLockedError(s)).toBe(false);
   });
 });
