@@ -114,6 +114,11 @@ describe("xcodeCommands / adapter.command", () => {
     expect(cmds.dev).toContain("PREMO_XCODE_BOOT_UDID");
     expect(cmds.dev).toContain("simctl launch --console-pty");
     expect(cmds.dev).toContain("devicectl device install");
+    // macOS execs the .app binary directly so it's a killable child of dev (not
+    // handed to launchd via `open`, which leaks the process and refocuses on
+    // restart instead of relaunching the fresh build).
+    expect(cmds.dev).toContain('exec "$TBD/$EP"');
+    expect(cmds.dev).not.toContain("open -W");
     // Product path comes from build settings (destination-accurate), not `find`.
     expect(cmds.dev).toContain("-showBuildSettings");
     expect(cmds.dev).not.toContain("find ");
