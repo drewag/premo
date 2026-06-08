@@ -1,5 +1,6 @@
 import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
 import { workspacesAdapter } from "./workspaces.js";
+import { monorepoAdapter } from "./monorepo.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
 import { xcodeAdapter } from "./xcode.js";
 import { cliAdapter } from "./cli.js";
@@ -28,10 +29,20 @@ export interface Adapter {
   adopt?(root: string): Promise<Partial<ProjectManifestInput>>;
 }
 
-// Order matters: more specific adapters first. cli (a `bin` package) sits
-// between workspaces (a monorepo with a root bin stays a monorepo) and
-// node-scripts (which matches any package.json, so cli must win first).
-const ADAPTERS: Adapter[] = [xcodeAdapter, workspacesAdapter, cliAdapter, nodeScriptsAdapter];
+// Order matters: more specific adapters first.
+//   - workspaces: a declared `workspaces`/pnpm monorepo.
+//   - monorepo: a *discovered* manual monorepo (≥2 sub-projects, no declared
+//     workspaces). Outranks cli/node-scripts so a root `bin` or aggregator
+//     scripts don't hijack a monorepo into looking like a single CLI/package.
+//   - cli: a single `bin` package.
+//   - node-scripts: any single package.json (the catch-all).
+const ADAPTERS: Adapter[] = [
+  xcodeAdapter,
+  workspacesAdapter,
+  monorepoAdapter,
+  cliAdapter,
+  nodeScriptsAdapter,
+];
 
 export async function detectAdapter(root: string): Promise<Adapter | null> {
   for (const adapter of ADAPTERS) {
