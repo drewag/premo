@@ -107,6 +107,45 @@ describe("resolveTargets — configured targets (DESIGN §13.4)", () => {
     expect(defaultTarget(targets)?.name).toBe("stack");
   });
 
+  it("a compose target also runs its member dev servers, each on its own port", async () => {
+    const root = await tmp();
+    await mono(root);
+    await pkg(path.join(root, "api"), { name: "api", scripts: { dev: "tsx --watch" } });
+    await pkg(path.join(root, "web"), { name: "web", scripts: { dev: "vite" } });
+
+    const stack = (
+      await resolveTargets(
+        root,
+        M({
+          targets: [
+            { name: "api", packages: ["api"], ports: { base: 5000 } },
+            { name: "web", packages: ["web"], ports: { base: 5010 } },
+            {
+              name: "stack",
+              compose: "docker-compose.yml",
+              packages: ["api", "web"],
+              default: true,
+            },
+          ],
+        }),
+      )
+    ).find((t) => t.name === "stack")!;
+
+    expect(stack.dev.map((d) => d.label)).toEqual(["stack", "api", "web"]);
+    expect(stack.dev[0]!.command).toBe("docker compose -f docker-compose.yml up");
+    expect(stack.dev[0]!.port).toBeUndefined(); // the compose proc has no port
+    expect(stack.dev.find((d) => d.label === "api")!.port).toBe(5000);
+    expect(stack.dev.find((d) => d.label === "web")!.port).toBe(5010);
+  });
+
+  it("a compose target with no member packages runs only the compose substrate", async () => {
+    const root = await tmp();
+    const stack = (
+      await resolveTargets(root, M({ targets: [{ name: "stack", compose: "docker-compose.yml" }] }))
+    ).find((t) => t.name === "stack")!;
+    expect(stack.dev.map((d) => d.command)).toEqual(["docker compose -f docker-compose.yml up"]);
+  });
+
   it("uses a leaf command target verbatim", async () => {
     const root = await tmp();
     const targets = await resolveTargets(
@@ -212,6 +251,16 @@ describe("per-target port allocation (DESIGN §13.4)", () => {
     expect(servesHttp(cli, new Set())).toBe(false);
     expect(servesHttp(tgt("ios"), new Set(["ios"]))).toBe(false); // member is a native app
     expect(servesHttp(tgt("dead", { dev: [] }), new Set())).toBe(false); // nothing to run
+  });
+
+  it("servesHttp: a compose-backed target doesn't serve even with member dev procs", () => {
+    const stack = tgt("stack", {
+      dev: [
+        { label: "stack", command: "docker compose -f x up", cwd: ".", kind: "service" },
+        { label: "api", command: "tsx", cwd: ".", kind: "service", port: 5000 },
+      ],
+    });
+    expect(servesHttp(stack, new Set())).toBe(false);
   });
 
   it("portsNeeded counts only serving targets, spaced by PORT_STEP", () => {

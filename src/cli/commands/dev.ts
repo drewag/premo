@@ -110,7 +110,14 @@ async function runAdoptedDev(
 
   const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
   const portBase = target.ports?.base ?? ctx.manifest.ports?.base;
-  if (portBase !== undefined) env.PORT = String(portBase);
+
+  // Each process binds its OWN port (a composite target runs several dev servers
+  // at once), falling back to the target/project base for a single server.
+  const portFor = (r: DevProc): number | undefined => r.port ?? portBase;
+  const envFor = (r: DevProc): NodeJS.ProcessEnv => {
+    const p = portFor(r);
+    return p !== undefined ? { ...env, PORT: String(p) } : env;
+  };
 
   // A single command-style runnable (a CLI, not a server) runs in the foreground
   // over the real TTY, with `-- <args>` passed through. No multiplex/piping.
@@ -120,7 +127,7 @@ async function runAdoptedDev(
       process.exitCode = 1;
       return;
     }
-    await runCommandDev(runnables[0]!, env, passthrough);
+    await runCommandDev(runnables[0]!, envFor(runnables[0]!), passthrough);
     return;
   }
 
@@ -137,7 +144,7 @@ async function runAdoptedDev(
       return;
     }
     for (const r of runnables) {
-      const proc = await spawnDetached(ctx.root, r.label, r.command, r.cwd, env);
+      const proc = await spawnDetached(ctx.root, r.label, r.command, r.cwd, envFor(r));
       log.ok(`${r.label} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`);
     }
     log.dim("  `premo logs` to tail, `premo stop` to stop.");
@@ -159,12 +166,14 @@ async function runAdoptedDev(
       const color = PREFIX_COLORS[colorIdx++ % PREFIX_COLORS.length]!;
       // Multi-line commands (e.g. the xcode build/run script) would flood the
       // line; show just the process label in that case.
+      const portTag = portFor(r) !== undefined ? pc.dim(` :${portFor(r)}`) : "";
       log.step(
-        r.command.includes("\n") ? `Starting ${r.label}` : `Starting ${r.label} (${r.command})`,
+        (r.command.includes("\n") ? `Starting ${r.label}` : `Starting ${r.label} (${r.command})`) +
+          portTag,
       );
       const proc = execa(r.command, {
         cwd: r.cwd,
-        env,
+        env: envFor(r),
         shell: true,
         stdout: "pipe",
         stderr: "pipe",
@@ -235,12 +244,15 @@ async function runAdoptedDev(
     process.stdin.on("keypress", onKey);
   }
 
+  // Per-process ports (a composite target runs several); fall back to the single
+  // target/project base when no proc carries its own.
+  const ports = [...new Set(runnables.map(portFor).filter((p): p is number => p !== undefined))];
   log.ok(interactive ? "dev up — press r to restart, q to quit" : "dev up — Ctrl-C to stop");
-  if (portBase !== undefined) log.dim(`  PORT=${portBase}`);
+  if (ports.length > 0) log.dim(`  ports: ${ports.join(", ")}`);
 
   if (interactive) {
-    const port = portBase !== undefined ? ` · PORT ${portBase}` : "";
-    footer = installFooter(` premo dev · r restart · q quit${port} `);
+    const portStr = ports.length > 0 ? ` · :${ports.join(" :")}` : "";
+    footer = installFooter(` premo dev · r restart · q quit${portStr} `);
   }
 
   type Event = { kind: "restart" | "quit" } | { kind: "exit"; code: number | null };

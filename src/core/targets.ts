@@ -3,12 +3,15 @@ import { resolvePackages, type Package } from "./packages.js";
 import { detectPackageManager, readPackageJson } from "./adapters/node-shared.js";
 
 // One process `dev` brings up for a target. A target expands to one process
-// (compose / command) or several (one per member package with a dev script).
+// (compose / command) or several (a compose substrate plus one per member
+// package with a dev script). `port` is the member's own port (so several dev
+// servers under one target don't collide); absent for compose/CLI procs.
 export interface DevProc {
   label: string;
   command: string;
   cwd: string;
   kind: "service" | "command";
+  port?: number;
 }
 
 // A fully-resolved run/deploy target (DESIGN §13.3). `dev` is the derived list
@@ -40,8 +43,25 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
   const pm = detectPackageManager(root);
   const pmRun = (s: string) => (pm === "npm" ? `npm run ${s}` : `${pm} ${s}`);
 
-  const devProcFor = (p: Package): DevProc | null =>
-    p.commands.dev ? { label: p.name, command: p.commands.dev, cwd: p.cwd, kind: p.kind } : null;
+  // A member package's own port comes from its same-named target's config block,
+  // so several dev servers under one composite target each bind a distinct port.
+  const portByName = new Map(
+    manifest.targets.filter((t) => t.ports).map((t) => [t.name, t.ports!.base] as const),
+  );
+  const memberProcs = (members: string[]): DevProc[] =>
+    members
+      .map((n) => pkgByName.get(n))
+      .filter((p): p is Package => !!p && !!p.commands.dev)
+      .map((p) => {
+        const port = portByName.get(p.name);
+        return {
+          label: p.name,
+          command: p.commands.dev!,
+          cwd: p.cwd,
+          kind: p.kind,
+          ...(port !== undefined ? { port } : {}),
+        };
+      });
 
   const byName = new Map<string, Target>();
 
@@ -49,7 +69,7 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
   // resolves from the package's own `deploy` script, else a root `deploy:<name>`
   // convention script (odo's central orchestration).
   for (const p of packages) {
-    const proc = devProcFor(p);
+    const procs = memberProcs([p.name]);
     let deploy: string | null = null;
     let deployCwd = root;
     if (p.commands.deploy) {
@@ -59,11 +79,11 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
       deploy = pmRun(`deploy:${p.name}`);
       deployCwd = root;
     }
-    if (!proc && !deploy) continue; // nothing to run or ship → not a target
+    if (procs.length === 0 && !deploy) continue; // nothing to run or ship → not a target
     byName.set(p.name, {
       name: p.name,
       packages: [p.name],
-      dev: proc ? [proc] : [],
+      dev: procs,
       deploy,
       deployCwd,
       isDefault: false,
@@ -79,14 +99,19 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
 
     let dev: DevProc[];
     if (cfg.compose) {
-      dev = [{ label: cfg.name, command: composeUp(cfg.compose), cwd: root, kind: "service" }];
+      // A compose target brings up the substrate AND any member packages' dev
+      // servers (the "infra in compose, apps on host" pattern, DESIGN §13.3).
+      const composeProc: DevProc = {
+        label: cfg.name,
+        command: composeUp(cfg.compose),
+        cwd: root,
+        kind: "service",
+      };
+      dev = [composeProc, ...memberProcs(members)];
     } else if (cfg.command) {
       dev = [{ label: cfg.name, command: cfg.command, cwd: root, kind: "service" }];
     } else {
-      dev = members
-        .map((n) => pkgByName.get(n))
-        .map((p) => (p ? devProcFor(p) : null))
-        .filter((d): d is DevProc => d !== null);
+      dev = memberProcs(members);
     }
 
     byName.set(cfg.name, {
@@ -110,11 +135,13 @@ export function defaultTarget(targets: Target[]): Target | null {
 }
 
 // Whether a target binds an HTTP port in dev (and so earns its own port): a
-// non-compose service whose members aren't native (xcode) apps. A compose target
-// owns its ports via the compose file; xcode/CLI targets don't serve.
+// non-compose service whose members aren't native (xcode) apps. A compose-backed
+// target owns its ports via the compose file (and its member dev servers carry
+// their own ports); xcode/CLI targets don't serve.
 export function servesHttp(t: Target, xcodePackages: Set<string>): boolean {
   if (t.packages.some((n) => xcodePackages.has(n))) return false;
-  return t.dev.some((d) => d.kind === "service" && !d.command.startsWith("docker compose"));
+  if (t.dev.some((d) => d.command.startsWith("docker compose"))) return false;
+  return t.dev.some((d) => d.kind === "service");
 }
 
 // Port range (in ports) the serving targets need — callers size the project
