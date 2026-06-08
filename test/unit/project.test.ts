@@ -24,6 +24,30 @@ describe("project manifest", () => {
     await expect(loadProject(dir)).rejects.toThrow();
   });
 
+  it("gives a migration message for a pre-split config (object `targets`)", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "premo-proj-"));
+    await writeFile(
+      path.join(dir, "premo.json"),
+      JSON.stringify({ name: "old", targets: { web: { dirs: ["web/"] } } }),
+    );
+    await expect(loadProject(dir)).rejects.toThrow(/predates the package\/target split/);
+  });
+
+  it("accepts the new array-shaped `packages` and `targets`", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "premo-proj-"));
+    await writeFile(
+      path.join(dir, "premo.json"),
+      JSON.stringify({
+        name: "new",
+        packages: [{ name: "web", dirs: ["web/"] }],
+        targets: [{ name: "web", packages: ["web"] }],
+      }),
+    );
+    const loaded = await loadProject(dir);
+    expect(loaded.packages.map((p) => p.name)).toEqual(["web"]);
+    expect(loaded.targets.map((t) => t.name)).toEqual(["web"]);
+  });
+
   it("findProjectRoot walks upward", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "premo-proj-"));
     await saveProject(dir, { name: "myapp", version: "0", commands: { dev: "yarn dev" } });

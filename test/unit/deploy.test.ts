@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { execa } from "execa";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { nextVersionFromTags, todayStamp } from "../../src/core/version.js";
-import { deployRef } from "../../src/core/deploy.js";
+import { deployRef, resolveDeployedRef } from "../../src/core/deploy.js";
 
 describe("nextVersionFromTags", () => {
   const today = "2026.06.04";
@@ -40,5 +44,33 @@ describe("deployRef", () => {
 
   it("includes the env segment when multiple envs are configured", () => {
     expect(deployRef("drewag-me", "staging", true)).toBe("deployed/staging/drewag-me");
+  });
+});
+
+async function initRepo(): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), "premo-deployref-"));
+  await execa("git", ["init", "-b", "main"], { cwd: dir });
+  await execa("git", ["config", "user.email", "t@example.com"], { cwd: dir });
+  await execa("git", ["config", "user.name", "Test"], { cwd: dir });
+  await writeFile(path.join(dir, "x"), "1");
+  await execa("git", ["add", "-A"], { cwd: dir });
+  await execa("git", ["commit", "-m", "init"], { cwd: dir });
+  return dir;
+}
+
+describe("resolveDeployedRef", () => {
+  it("reports a first deploy (no tracking ref) when nothing is deployed yet", async () => {
+    const dir = await initRepo();
+    const ref = await resolveDeployedRef(dir, "web", "prod", false);
+    expect(ref.localBranch).toBe("deployed/web");
+    expect(ref.trackingRef).toBeNull();
+  });
+
+  it("tracks the local deploy branch once it exists", async () => {
+    const dir = await initRepo();
+    const head = (await execa("git", ["rev-parse", "HEAD"], { cwd: dir })).stdout.trim();
+    await execa("git", ["update-ref", "refs/heads/deployed/web", head], { cwd: dir });
+    const ref = await resolveDeployedRef(dir, "web", "prod", false);
+    expect(ref.trackingRef).toBe("deployed/web");
   });
 });

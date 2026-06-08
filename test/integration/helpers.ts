@@ -84,6 +84,30 @@ export async function makeWorkspaces(): Promise<string> {
   return dir;
 }
 
+// A manual monorepo (no `workspaces` field): a root with a dev-tool bin + a
+// central deploy:<name> script, and member packages discovered one level deep.
+// `api` and `web` are serving targets (have a dev); `shared` is a library.
+export async function makeManualMonorepo(): Promise<string> {
+  const dir = await tmp("mono");
+  await writeJson(path.join(dir, "package.json"), {
+    name: "mono",
+    bin: { mono: "./bin/dev.ts" },
+    scripts: { "deploy:web": "echo DEPLOYED_WEB" },
+  });
+  const members: Record<string, Record<string, string>> = {
+    api: { dev: "echo APIDEV", build: "echo AFFECTED_API", test: "echo TEST_API" },
+    web: { dev: "echo WEBDEV", build: "echo AFFECTED_WEB" },
+    shared: { test: "echo TEST_SHARED" }, // library: no dev/deploy → not a target
+  };
+  for (const [name, scripts] of Object.entries(members)) {
+    const p = path.join(dir, name);
+    await mkdir(p, { recursive: true });
+    await writeJson(path.join(p, "package.json"), { name, scripts });
+  }
+  await gitInit(dir);
+  return dir;
+}
+
 // A CLI-style package (has a `bin`).
 export async function makeCli(): Promise<string> {
   const dir = await tmp("cli");
