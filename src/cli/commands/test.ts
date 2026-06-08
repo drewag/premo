@@ -17,7 +17,7 @@ export function register(program: Command): void {
         opts: { all?: boolean; device?: string; platform?: string },
       ) => {
         const ctx = await ensureContext(process.cwd());
-        const env = await resolveXcodeEnv(ctx, opts, false);
+        const env = await resolveXcodeEnv(ctx, opts, false, false, target);
         if (env === null) {
           process.exitCode = 1;
           return;

@@ -57,7 +57,7 @@ export function register(program: Command): void {
         const ctx = await ensureContext(process.cwd());
         // Prompt for a destination interactively, unless detaching; remember it
         // as this project's last-run device for next time.
-        const xcodeEnv = await resolveXcodeEnv(ctx, opts, !opts.background, true);
+        const xcodeEnv = await resolveXcodeEnv(ctx, opts, !opts.background, true, target);
         if (xcodeEnv === null) {
           process.exitCode = 1;
           return;

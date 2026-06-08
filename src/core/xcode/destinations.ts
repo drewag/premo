@@ -1,6 +1,6 @@
 import { execa } from "execa";
 import pc from "picocolors";
-import type { ProjectManifest, XcodeDestination } from "../../manifest/types.js";
+import type { XcodeConfig, XcodeDestination } from "../../manifest/types.js";
 import { selectFromList } from "../select.js";
 import { readLastXcodeDest } from "../local.js";
 import { log } from "../logger.js";
@@ -131,7 +131,7 @@ function configToDestination(cfg: XcodeDestination, sims: Simulator[]): Destinat
 }
 
 export interface ResolveOptions {
-  manifest: ProjectManifest;
+  xcode?: XcodeConfig; // the unit's baked xcode config (for defaultDestination)
   flagDevice?: string; // --device: simulator name or udid substring
   flagPlatform?: string; // --platform: ios|macos|visionos|…
   interactive: boolean; // prompt when no flag and attached to a TTY
@@ -143,7 +143,7 @@ export interface ResolveOptions {
 //   --device/--platform flag  →  configured default (non-interactive)  →
 //   last-used (auto, unless --pick)  →  interactive pick  →  error.
 export async function resolveDestination(opts: ResolveOptions): Promise<Destination> {
-  const cfg = opts.manifest.xcode?.defaultDestination;
+  const cfg = opts.xcode?.defaultDestination;
 
   // 1. explicit flag
   if (opts.flagDevice || opts.flagPlatform) {

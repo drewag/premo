@@ -76,10 +76,22 @@ export async function adoptProject(
   const name = sanitizeProjectName(rootPkg?.name ?? path.basename(root));
   const detected = adapter ? await adapter.packages(root) : [];
 
-  const packages = detected.map((d) => ({ name: d.name, dirs: d.dirs }));
+  let packages: ProjectManifestInput["packages"] = detected.map((d) => ({
+    name: d.name,
+    dirs: d.dirs,
+  }));
 
   // Configure-tier adapters (e.g. xcode) bake concrete commands + extra config.
   const baked = adapter?.adopt ? await adapter.adopt(root) : {};
+
+  // An adapter may also contribute per-package config (e.g. the monorepo adapter
+  // bakes an `xcode` block onto a native-app member). Merge it by name rather
+  // than letting the spread clobber the detected `packages`.
+  if (baked.packages) {
+    const extra = new Map(baked.packages.map((p) => [p.name, p]));
+    packages = packages?.map((p) => ({ ...p, ...(extra.get(p.name!) ?? {}) }));
+    delete baked.packages;
+  }
 
   const draft: ProjectManifestInput = {
     name,

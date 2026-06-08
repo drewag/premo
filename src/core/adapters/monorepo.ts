@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import type { Verb } from "../../manifest/types.js";
+import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
 import { type Adapter, type DetectedPackage } from "./index.js";
 import { xcodeAdapter } from "./xcode.js";
@@ -89,5 +89,22 @@ export const monorepoAdapter: Adapter = {
     // Resolve from the member's own root so the leaf adapter sees its scripts,
     // package manager, and (for xcode) its project.
     return d.adapter.command(verb, d.pkg, d.pkg.cwd);
+  },
+
+  // Configure tier: bake each native-app member's xcode block (scheme, bundle id,
+  // default destination — paths relative to the member dir) onto that package, so
+  // dev/build/test on it are reproducible (DESIGN §13.2). Other members need no
+  // baked config (their commands resolve live from package.json scripts).
+  async adopt(root: string): Promise<Partial<ProjectManifestInput>> {
+    const packages: NonNullable<ProjectManifestInput["packages"]> = [];
+    for (const dir of await memberDirs(root)) {
+      const adapter = await childAdapterFor(dir);
+      if (adapter?.name !== "xcode" || !adapter.adopt) continue;
+      const baked = await adapter.adopt(dir);
+      if (baked.xcode) {
+        packages.push({ name: sanitizeProjectName(path.basename(dir)), xcode: baked.xcode });
+      }
+    }
+    return packages.length > 0 ? { packages } : {};
   },
 };

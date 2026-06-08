@@ -1,6 +1,8 @@
-import type { ProjectManifest, Verb } from "../manifest/types.js";
+import type { ProjectManifest, Verb, XcodeConfig } from "../manifest/types.js";
 import { VERBS } from "../manifest/types.js";
 import { type Adapter, detectAdapter, getAdapter } from "./adapters/index.js";
+import { xcodeCommands } from "./xcode.js";
+import { shq } from "./shell.js";
 
 // A fully-resolved package: where to run, what it owns (for affected detection),
 // and the concrete command for each verb (config > adapter). The build/test/lint
@@ -15,6 +17,14 @@ export interface Package {
   // "service" (server) vs "command" (run-once/interactive CLI). Drives the dev
   // run strategy (piped multiplex vs inherited TTY) and port allocation.
   kind: "service" | "command";
+  // Present when this package is a native Apple app — drives destination
+  // resolution for dev/build/test (DESIGN §13.2).
+  xcode?: XcodeConfig;
+}
+
+// The `-workspace X` / `-project X` flag for an xcode package's baked config.
+function xcodeFlag(x: XcodeConfig): string {
+  return x.workspace ? `-workspace ${shq(x.workspace)}` : `-project ${shq(x.project ?? "")}`;
 }
 
 async function adapterFor(root: string, manifest: ProjectManifest): Promise<Adapter | null> {
@@ -50,6 +60,16 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
       if (cmd) commands[verb] = cmd;
     }
 
+    // A baked per-package xcode block drives build/test/dev from the pinned
+    // scheme + project (relative to the package dir), unless a config command
+    // override already set them.
+    if (cfg?.xcode) {
+      const xc = xcodeCommands(xcodeFlag(cfg.xcode), cfg.xcode.scheme);
+      commands.build = cfg.commands.build ?? xc.build;
+      commands.test = cfg.commands.test ?? xc.test;
+      commands.dev = cfg.commands.dev ?? xc.dev;
+    }
+
     packages.push({
       name,
       dirs,
@@ -58,6 +78,7 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
       cwd,
       commands,
       kind: det?.kind ?? "service",
+      ...(cfg?.xcode ? { xcode: cfg.xcode } : {}),
     });
   }
 

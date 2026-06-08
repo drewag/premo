@@ -58,4 +58,20 @@ describe("resolvePackages", () => {
     expect(packages[0]!.name).toBe("thing");
     expect(packages[0]!.commands.build).toBe("make");
   });
+
+  it("bakes build/test/dev from a package's xcode block (DESIGN §13.2)", async () => {
+    const root = await tmp();
+    const manifest = ProjectManifest.parse({
+      name: "mono",
+      packages: [
+        { name: "ios", dirs: ["ios/"], xcode: { project: "odo.xcodeproj", scheme: "odo" } },
+      ],
+    });
+    const ios = (await resolvePackages(root, manifest)).find((p) => p.name === "ios")!;
+    expect(ios.xcode?.scheme).toBe("odo");
+    expect(ios.commands.build).toBe(
+      'xcodebuild -project odo.xcodeproj -scheme odo -destination "$PREMO_XCODE_DEST" build',
+    );
+    expect(ios.commands.dev).toContain("PREMO_XCODE_BUNDLE_ID");
+  });
 });

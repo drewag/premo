@@ -18,17 +18,43 @@ export const ShellSpec = z
   });
 export type ShellSpec = z.infer<typeof ShellSpec>;
 
+// Where to run an Xcode build. `platform` selects the SDK/run path; `deviceName`
+// + `os` pin a specific simulator. premo resolves this (or a `--device` override
+// / interactive pick) into an `xcodebuild -destination` value injected as
+// PREMO_XCODE_DEST. See core/xcode.ts.
+export const XcodeDestination = z.object({
+  platform: z.enum(["ios-simulator", "ios-device", "macos", "visionos-simulator"]),
+  deviceName: z.string().optional(), // e.g. "iPhone 17 Pro"
+  os: z.string().optional(), // e.g. "26.2"
+});
+export type XcodeDestination = z.infer<typeof XcodeDestination>;
+
+// Xcode project facts baked by `premo adopt` so the verbs need no live
+// `xcodebuild -list` on every run. Exactly one of workspace/project is set; the
+// path is relative to the unit it belongs to (the repo root, or — for an xcode
+// package in a monorepo — that package's directory). Lives top-level for a
+// single-app repo, or on the xcode package in a monorepo (DESIGN §13.2).
+export const XcodeConfig = z.object({
+  workspace: z.string().optional(), // path to .xcworkspace
+  project: z.string().optional(), // path to .xcodeproj
+  scheme: z.string(),
+  bundleId: z.string().optional(),
+  defaultDestination: XcodeDestination.optional(),
+});
+export type XcodeConfig = z.infer<typeof XcodeConfig>;
+
 // A package is a code sub-unit of a repo — the unit of build/test/lint (DESIGN
 // §13). `dirs` are the path prefixes it owns; `affects` are other packages a
 // change here also marks affected (fan-out); `affectsExcept` are path-prefix
-// exceptions to that fan-out. `commands` are per-package verb overrides. (The
-// run/deploy axis — `targets` — lands in a later slice; §13.3.)
+// exceptions to that fan-out. `commands` are per-package verb overrides. `xcode`
+// is present when this package is a native Apple app (baked at adopt).
 export const PackageConfig = z.object({
   name: z.string(),
   dirs: z.array(z.string()).default([]),
   affects: z.array(z.string()).default([]),
   affectsExcept: z.array(z.string()).default([]),
   commands: z.record(z.string()).default({}),
+  xcode: XcodeConfig.optional(),
 });
 export type PackageConfig = z.infer<typeof PackageConfig>;
 
@@ -61,28 +87,6 @@ export const DeployConfig = z.object({
   // The deploy command itself resolves through `commands.deploy` like other verbs.
   envs: z.array(z.string()).default(["prod"]),
 });
-
-// Where to run an Xcode build. `platform` selects the SDK/run path; `deviceName`
-// + `os` pin a specific simulator. premo resolves this (or a `--device` override
-// / interactive pick) into an `xcodebuild -destination` value injected as
-// PREMO_XCODE_DEST. See core/xcode.ts.
-export const XcodeDestination = z.object({
-  platform: z.enum(["ios-simulator", "ios-device", "macos", "visionos-simulator"]),
-  deviceName: z.string().optional(), // e.g. "iPhone 17 Pro"
-  os: z.string().optional(), // e.g. "26.2"
-});
-export type XcodeDestination = z.infer<typeof XcodeDestination>;
-
-// Xcode project facts baked by `premo adopt` so the verbs need no live
-// `xcodebuild -list` on every run. Exactly one of workspace/project is set.
-export const XcodeConfig = z.object({
-  workspace: z.string().optional(), // path to .xcworkspace, relative to root
-  project: z.string().optional(), // path to .xcodeproj, relative to root
-  scheme: z.string(),
-  bundleId: z.string().optional(),
-  defaultDestination: XcodeDestination.optional(),
-});
-export type XcodeConfig = z.infer<typeof XcodeConfig>;
 
 export const ProjectManifest = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]*$/),

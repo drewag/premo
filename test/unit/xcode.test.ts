@@ -16,9 +16,10 @@ vi.mock("../../src/core/select.js", () => ({
 import { selectFromList } from "../../src/core/select.js";
 const mockSelect = selectFromList as unknown as ReturnType<typeof vi.fn>;
 
-import { ProjectManifest } from "../../src/manifest/types.js";
+import { ProjectManifest, type XcodeConfig } from "../../src/manifest/types.js";
 import { detectAdapter } from "../../src/core/adapters/index.js";
 import { xcodeAdapter } from "../../src/core/adapters/xcode.js";
+import { monorepoAdapter } from "../../src/core/adapters/monorepo.js";
 import { readFile } from "node:fs/promises";
 import {
   ensurePremoGitignore,
@@ -143,7 +144,7 @@ describe("resolveDestination", () => {
   it("matches a --device by name substring", async () => {
     stubSimctl();
     const d = await resolveDestination({
-      manifest: xcodeManifest(),
+      xcode: undefined,
       flagDevice: "17 pro",
       interactive: false,
     });
@@ -154,14 +155,14 @@ describe("resolveDestination", () => {
   it("throws a helpful error when --device matches nothing", async () => {
     stubSimctl();
     await expect(
-      resolveDestination({ manifest: xcodeManifest(), flagDevice: "pixel", interactive: false }),
+      resolveDestination({ xcode: undefined, flagDevice: "pixel", interactive: false }),
     ).rejects.toThrow(/No device or simulator matching "pixel"/);
   });
 
   it("matches a connected physical device by --device name", async () => {
     stubSimctl(SIMCTL_JSON, XCTRACE_OUTPUT);
     const d = await resolveDestination({
-      manifest: xcodeManifest(),
+      xcode: undefined,
       flagDevice: "andrew's iphone",
       interactive: false,
     });
@@ -172,7 +173,7 @@ describe("resolveDestination", () => {
   it("--platform ios-device prefers a connected device over simulators", async () => {
     stubSimctl(SIMCTL_JSON, XCTRACE_OUTPUT);
     const d = await resolveDestination({
-      manifest: xcodeManifest(),
+      xcode: undefined,
       flagPlatform: "ios-device",
       interactive: false,
     });
@@ -182,7 +183,7 @@ describe("resolveDestination", () => {
   it("maps --platform macos to the Mac destination", async () => {
     stubSimctl();
     const d = await resolveDestination({
-      manifest: xcodeManifest(),
+      xcode: undefined,
       flagPlatform: "macos",
       interactive: false,
     });
@@ -198,15 +199,30 @@ describe("resolveDestination", () => {
         defaultDestination: { platform: "ios-simulator", deviceName: "iPhone 17 Pro", os: "26.2" },
       },
     });
-    const d = await resolveDestination({ manifest, interactive: false });
+    const d = await resolveDestination({ xcode: manifest.xcode, interactive: false });
     expect(d.dest).toBe("platform=iOS Simulator,id=UDID-IPHONE");
   });
 
   it("errors when non-interactive with no flag and no configured default", async () => {
     stubSimctl();
-    await expect(
-      resolveDestination({ manifest: xcodeManifest(), interactive: false }),
-    ).rejects.toThrow(/No destination to run on/);
+    await expect(resolveDestination({ xcode: undefined, interactive: false })).rejects.toThrow(
+      /No destination to run on/,
+    );
+  });
+});
+
+describe("monorepo per-package xcode (adopt)", () => {
+  it("bakes an xcode block onto a native-app member", async () => {
+    stubSimctl(); // xcodebuild -list/-showBuildSettings → empty (scheme falls back to project name)
+    const root = await tmp();
+    await mkdir(path.join(root, "ios", "App.xcodeproj"), { recursive: true });
+
+    const baked = await monorepoAdapter.adopt!(root);
+    expect(baked.packages).toHaveLength(1);
+    expect(baked.packages![0]).toMatchObject({
+      name: "ios",
+      xcode: { project: "App.xcodeproj", scheme: "App" },
+    });
   });
 });
 
@@ -227,7 +243,7 @@ describe("listPhysicalDevices", () => {
 describe("xcodeEnvFor", () => {
   it("is a no-op for non-xcode projects", async () => {
     const manifest = ProjectManifest.parse({ name: "node-app" });
-    expect(await xcodeEnvFor(manifest, { interactive: false })).toEqual({});
+    expect(await xcodeEnvFor(manifest.xcode, { interactive: false })).toEqual({});
     expect(mockExeca).not.toHaveBeenCalled();
   });
 
@@ -241,7 +257,7 @@ describe("xcodeEnvFor", () => {
         defaultDestination: { platform: "ios-simulator", deviceName: "iPhone 17 Pro", os: "26.2" },
       },
     });
-    const env = await xcodeEnvFor(manifest, { interactive: false });
+    const env = await xcodeEnvFor(manifest.xcode, { interactive: false });
     expect(env.PREMO_XCODE_DEST).toBe("platform=iOS Simulator,id=UDID-IPHONE");
     expect(env.PREMO_XCODE_BOOT_UDID).toBe("UDID-IPHONE");
     expect(env.PREMO_XCODE_BUNDLE_ID).toBe("drewag.Awooga");
@@ -257,16 +273,21 @@ describe("xcodeEnvFor", () => {
         defaultDestination: { platform: "ios-simulator", deviceName: "iPhone 17 Pro", os: "26.2" },
       },
     });
-    expect((await xcodeEnvFor(manifest, { interactive: false })).PREMO_XCODE_QUIET).toBe("-quiet");
+    expect((await xcodeEnvFor(manifest.xcode, { interactive: false })).PREMO_XCODE_QUIET).toBe(
+      "-quiet",
+    );
     expect(
-      (await xcodeEnvFor(manifest, { interactive: false, verbose: true })).PREMO_XCODE_QUIET,
+      (await xcodeEnvFor(manifest.xcode, { interactive: false, verbose: true })).PREMO_XCODE_QUIET,
     ).toBe("");
   });
 
   it("exports PREMO_XCODE_DEVICE_UDID (not BOOT_UDID) for a physical device", async () => {
     stubSimctl(SIMCTL_JSON, XCTRACE_OUTPUT);
     const manifest = xcodeManifest({ xcode: { project: "Awooga.xcodeproj", scheme: "Awooga" } });
-    const env = await xcodeEnvFor(manifest, { device: "andrew's iphone", interactive: false });
+    const env = await xcodeEnvFor(manifest.xcode, {
+      device: "andrew's iphone",
+      interactive: false,
+    });
     expect(env.PREMO_XCODE_DEVICE_UDID).toBe("00008120-001E445E0C11");
     expect(env.PREMO_XCODE_BOOT_UDID).toBeUndefined();
   });
@@ -278,7 +299,7 @@ describe("last-destination memory", () => {
 
   // configured default = iPad; last run = iPhone. (iPad is also the booted sim,
   // so this proves the memory wins over both the config default and "booted".)
-  const cfgIpad = {
+  const cfgIpad: XcodeConfig = {
     project: "Awooga.xcodeproj",
     scheme: "Awooga",
     defaultDestination: { platform: "ios-simulator", deviceName: "iPad Pro", os: "26.2" },
@@ -300,7 +321,7 @@ describe("last-destination memory", () => {
     const root = await tmp();
     await writeLastXcodeDest(root, { dest: IPHONE, label: "iPhone 17 Pro" });
     const d = await resolveDestination({
-      manifest: xcodeManifest({ xcode: cfgIpad }),
+      xcode: cfgIpad,
       interactive: true,
       root,
     });
@@ -313,7 +334,7 @@ describe("last-destination memory", () => {
     const root = await tmp();
     await writeLastXcodeDest(root, { dest: IPHONE, label: "iPhone 17 Pro" });
     await resolveDestination({
-      manifest: xcodeManifest({ xcode: cfgIpad }),
+      xcode: cfgIpad,
       interactive: true,
       root,
       pick: true,
@@ -326,7 +347,7 @@ describe("last-destination memory", () => {
     const root = await tmp();
     await writeLastXcodeDest(root, { dest: "platform=iOS Simulator,id=GONE", label: "Old" });
     const d = await resolveDestination({
-      manifest: xcodeManifest({ xcode: cfgIpad }),
+      xcode: cfgIpad,
       interactive: true,
       root,
     });
@@ -339,11 +360,11 @@ describe("last-destination memory", () => {
     const manifest = xcodeManifest({ xcode: { project: "Awooga.xcodeproj", scheme: "Awooga" } });
 
     const noRemember = await tmp();
-    await xcodeEnvFor(manifest, { device: "17 pro", interactive: false, root: noRemember });
+    await xcodeEnvFor(manifest.xcode, { device: "17 pro", interactive: false, root: noRemember });
     expect(await readLastXcodeDest(noRemember)).toBeUndefined();
 
     const remembered = await tmp();
-    await xcodeEnvFor(manifest, {
+    await xcodeEnvFor(manifest.xcode, {
       device: "17 pro",
       interactive: false,
       root: remembered,
