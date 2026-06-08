@@ -9,6 +9,7 @@ import {
 } from "./project.js";
 import { detectAdapter } from "./adapters/index.js";
 import { readPackageJson } from "./adapters/node-shared.js";
+import { resolveTargets, toTargetConfig } from "./targets.js";
 import { ensurePremoGitignore } from "./local.js";
 import { gitRoot } from "./git.js";
 import { allocatePortBlock } from "./port-registry.js";
@@ -105,6 +106,11 @@ export async function adoptProject(
     draft.ports = { base: alloc.base, block: alloc.block };
     portInfo = `, ports ${alloc.base}–${alloc.base + alloc.block - 1}`;
   }
+
+  // Seed run/deploy targets 1:1 from the resolved packages (DESIGN §13.3) and
+  // materialize them; composite targets (e.g. a compose stack) are added by hand.
+  const seeded = await resolveTargets(root, ProjectManifest.parse(draft));
+  if (seeded.length > 0) draft.targets = seeded.map(toTargetConfig);
 
   const manifest = ProjectManifest.parse(draft); // validate
   await saveProject(root, draft); // write the clean, un-defaulted version

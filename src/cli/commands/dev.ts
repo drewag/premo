@@ -4,7 +4,7 @@ import path from "node:path";
 import readline from "node:readline";
 import pc from "picocolors";
 import { ensureContext, type Context } from "../../core/context.js";
-import { resolvePackages, type Package } from "../../core/packages.js";
+import { resolveTargets, defaultTarget, type DevProc } from "../../core/targets.js";
 import { spawnDetached } from "../../core/supervise.js";
 import { shq } from "../../core/shell.js";
 import { installFooter, type Footer } from "../../core/footer.js";
@@ -74,45 +74,53 @@ async function runAdoptedDev(
   extraEnv: NodeJS.ProcessEnv = {},
   passthrough: string[] = [],
 ): Promise<void> {
-  const targets = await resolvePackages(ctx.root, ctx.manifest);
-  let devTargets = targets.filter((t) => t.commands.dev);
+  const targets = await resolveTargets(ctx.root, ctx.manifest);
 
+  let target;
   if (targetArg) {
-    const t = targets.find((x) => x.name === targetArg);
-    if (!t) {
+    target = targets.find((t) => t.name === targetArg) ?? null;
+    if (!target) {
       log.error(
-        `No target "${targetArg}". Known: ${targets.map((x) => x.name).join(", ") || "none"}`,
+        `No target "${targetArg}". Known: ${targets.map((t) => t.name).join(", ") || "none"}`,
       );
       process.exitCode = 1;
       return;
     }
-    if (!t.commands.dev) {
-      log.error(`Target "${targetArg}" has no dev command.`);
+  } else {
+    target = defaultTarget(targets);
+    if (!target) {
+      if (targets.length === 0) {
+        log.warn("No `dev` target resolved for this project.");
+        log.dim("  add a package with a dev script, a target in premo.json, or run `premo adopt`.");
+      } else {
+        log.error(`Multiple targets — pick one: ${targets.map((t) => t.name).join(", ")}`);
+        log.dim('  or mark one "default": true in premo.json.');
+      }
       process.exitCode = 1;
       return;
     }
-    devTargets = [t];
   }
 
-  if (devTargets.length === 0) {
-    log.warn("No `dev` command resolved for this project.");
-    log.dim('  add one under "commands" in premo.json, or run `premo adopt`.');
+  const runnables = target.dev;
+  if (runnables.length === 0) {
+    log.error(`Target "${target.name}" has no dev command.`);
     process.exitCode = 1;
     return;
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
-  if (ctx.manifest.ports) env.PORT = String(ctx.manifest.ports.base);
+  const portBase = target.ports?.base ?? ctx.manifest.ports?.base;
+  if (portBase !== undefined) env.PORT = String(portBase);
 
-  // A command-style target (a CLI, not a server) runs as one foreground process
+  // A single command-style runnable (a CLI, not a server) runs in the foreground
   // over the real TTY, with `-- <args>` passed through. No multiplex/piping.
-  if (devTargets.length === 1 && devTargets[0]!.kind === "command") {
+  if (runnables.length === 1 && runnables[0]!.kind === "command") {
     if (background) {
       log.error("`--background` isn't supported for a CLI project (it runs in the foreground).");
       process.exitCode = 1;
       return;
     }
-    await runCommandDev(devTargets[0]!, env, passthrough);
+    await runCommandDev(runnables[0]!, env, passthrough);
     return;
   }
 
@@ -128,9 +136,9 @@ async function runAdoptedDev(
       process.exitCode = 1;
       return;
     }
-    for (const t of devTargets) {
-      const proc = await spawnDetached(ctx.root, t.name, t.commands.dev!, t.cwd, env);
-      log.ok(`${t.name} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`);
+    for (const r of runnables) {
+      const proc = await spawnDetached(ctx.root, r.label, r.command, r.cwd, env);
+      log.ok(`${r.label} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`);
     }
     log.dim("  `premo logs` to tail, `premo stop` to stop.");
     return;
@@ -147,24 +155,22 @@ async function runAdoptedDev(
     children = [];
     lockDetected = false;
     let colorIdx = 0;
-    for (const t of devTargets) {
+    for (const r of runnables) {
       const color = PREFIX_COLORS[colorIdx++ % PREFIX_COLORS.length]!;
       // Multi-line commands (e.g. the xcode build/run script) would flood the
-      // line; show just the target name in that case.
+      // line; show just the process label in that case.
       log.step(
-        t.commands.dev!.includes("\n")
-          ? `Starting ${t.name}`
-          : `Starting ${t.name} (${t.commands.dev})`,
+        r.command.includes("\n") ? `Starting ${r.label}` : `Starting ${r.label} (${r.command})`,
       );
-      const proc = execa(t.commands.dev!, {
-        cwd: t.cwd,
+      const proc = execa(r.command, {
+        cwd: r.cwd,
         env,
         shell: true,
         stdout: "pipe",
         stderr: "pipe",
         reject: false,
       });
-      const prefix = color(`[${t.name}]`);
+      const prefix = color(`[${r.label}]`);
       const onChunk = (b: Buffer) => {
         if (xcodeDevice && !lockDetected && isDeviceLockedError(b.toString("utf8"))) {
           lockDetected = true;
@@ -230,10 +236,10 @@ async function runAdoptedDev(
   }
 
   log.ok(interactive ? "dev up — press r to restart, q to quit" : "dev up — Ctrl-C to stop");
-  if (ctx.manifest.ports) log.dim(`  PORT=${ctx.manifest.ports.base}`);
+  if (portBase !== undefined) log.dim(`  PORT=${portBase}`);
 
   if (interactive) {
-    const port = ctx.manifest.ports ? ` · PORT ${ctx.manifest.ports.base}` : "";
+    const port = portBase !== undefined ? ` · PORT ${portBase}` : "";
     footer = installFooter(` premo dev · r restart · q quit${port} `);
   }
 
@@ -283,16 +289,16 @@ async function runAdoptedDev(
 // colors, and Ctrl-C work), appending shell-quoted passthrough args. The exit
 // code is propagated so `premo dev -- <args>` is scriptable.
 async function runCommandDev(
-  t: Package,
+  r: DevProc,
   env: NodeJS.ProcessEnv,
   passthrough: string[],
 ): Promise<void> {
   const extra = passthrough.length ? " " + passthrough.map(shq).join(" ") : "";
-  const cmd = t.commands.dev! + extra;
+  const cmd = r.command + extra;
   // Diagnostic to stderr so stdout stays exactly the tool's own output (an agent
   // can pipe `premo dev -- doctor --json` straight into a JSON parser).
-  process.stderr.write(pc.cyan(`→ Running ${t.name}: ${cmd}\n`));
-  const res = await execa(cmd, { cwd: t.cwd, env, shell: true, stdio: "inherit", reject: false });
+  process.stderr.write(pc.cyan(`→ Running ${r.label}: ${cmd}\n`));
+  const res = await execa(cmd, { cwd: r.cwd, env, shell: true, stdio: "inherit", reject: false });
   process.exitCode = res.exitCode ?? 0;
 }
 

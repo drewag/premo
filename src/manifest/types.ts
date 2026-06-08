@@ -32,6 +32,30 @@ export const PackageConfig = z.object({
 });
 export type PackageConfig = z.infer<typeof PackageConfig>;
 
+// A conflict-free port block. Allocated on adopt for projects that serve, and
+// optionally pinned per run/deploy target. The base is exported as $PORT.
+export const PortBlock = z.object({
+  base: z.number().int().min(1024).max(65000),
+  block: z.number().int().min(20).max(1000).default(100),
+});
+export type PortBlock = z.infer<typeof PortBlock>;
+
+// A run/deploy target (DESIGN §13.3) — a named runnable/shippable composed of
+// one or more `packages`. How it comes up in `dev` is derived, in priority:
+// `compose` (a docker compose file, first-class) → `command` (a leaf escape
+// hatch) → the dev scripts of its member packages. `deploy` is its ship command;
+// `default` marks the target bare `premo dev` brings up.
+export const TargetConfig = z.object({
+  name: z.string(),
+  packages: z.array(z.string()).default([]),
+  compose: z.string().optional(),
+  command: z.string().optional(),
+  deploy: z.string().optional(),
+  ports: PortBlock.optional(),
+  default: z.boolean().optional(),
+});
+export type TargetConfig = z.infer<typeof TargetConfig>;
+
 export const DeployConfig = z.object({
   // Single env ⇒ refs are `deployed/<target>`; multiple ⇒ `deployed/<env>/<target>`.
   // The deploy command itself resolves through `commands.deploy` like other verbs.
@@ -67,12 +91,7 @@ export const ProjectManifest = z.object({
   adapter: z.string().optional(),
   // A conflict-free port block allocated on adopt for projects that serve; the
   // base is exported as $PORT to `dev`/`shell` and used by `open`.
-  ports: z
-    .object({
-      base: z.number().int().min(1024).max(65000),
-      block: z.number().int().min(20).max(1000).default(100),
-    })
-    .optional(),
+  ports: PortBlock.optional(),
   // URL `premo open` launches; ${PORT} is the allocated base.
   openUrl: z.string().optional(),
   // Named interactive shells (e.g. `db` → psql).
@@ -81,6 +100,9 @@ export const ProjectManifest = z.object({
   // The build/test/lint unit (DESIGN §13). Array of named packages; mostly
   // auto-detected and written materialized by `premo adopt`.
   packages: z.array(PackageConfig).default([]),
+  // The dev/deploy unit (DESIGN §13.3). Auto-seeded 1:1 from runnable/deployable
+  // packages; composite targets (e.g. a compose stack) are authored.
+  targets: z.array(TargetConfig).default([]),
   changeBase: z.string().default("origin/main"),
   affectedCommand: z.string().nullable().optional(),
   deploy: DeployConfig.optional(),

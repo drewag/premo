@@ -1,0 +1,1 @@
+- Make sure that AI uses strand within the projects its configured for (And uses it well). For all of the supported functionality.
