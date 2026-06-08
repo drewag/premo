@@ -1,6 +1,7 @@
 import type { Argument, Command, Option } from "commander";
 import { inspectContext } from "./context.js";
 import { resolvePackages } from "./packages.js";
+import { resolveTargets } from "./targets.js";
 
 // Reflection-driven shell completion. Command names, flags, and option/argument
 // metadata all come from introspecting the Commander program, so new verbs and
@@ -15,10 +16,15 @@ export interface Candidate {
 
 // --- dynamic value sources (read-only; best-effort) ---
 
+// The `[target]` positional spans both axes — build/test/lint take a package,
+// dev/deploy take a target — so complete the union of both names.
 async function targetNames(cwd: string): Promise<string[]> {
   const { root, manifest } = await inspectContext(cwd);
-  const packages = await resolvePackages(root, manifest);
-  return packages.map((p) => p.name);
+  const [packages, targets] = await Promise.all([
+    resolvePackages(root, manifest),
+    resolveTargets(root, manifest),
+  ]);
+  return [...new Set([...packages.map((p) => p.name), ...targets.map((t) => t.name)])].sort();
 }
 
 async function shellNames(cwd: string): Promise<string[]> {

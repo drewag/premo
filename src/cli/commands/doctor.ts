@@ -4,6 +4,7 @@ import pc from "picocolors";
 import { VERBS, type Verb } from "../../manifest/types.js";
 import { inspectContext } from "../../core/context.js";
 import { resolvePackages } from "../../core/packages.js";
+import { resolveTargets } from "../../core/targets.js";
 import { isGitRepo, resolveBase } from "../../core/git.js";
 import { listBackground } from "../../core/supervise.js";
 import { log } from "../../core/logger.js";
@@ -82,8 +83,13 @@ interface ProjectReport {
   ports: { base: number; block: number } | null;
   background: { name: string; pid: number }[];
   packages: { name: string; commands: Record<Verb, string | null> }[];
+  targets: { name: string; dev: boolean; deploy: boolean; default: boolean }[];
   unwired: Verb[];
 }
+
+// build/test/lint are the package-axis verbs shown in the package matrix;
+// dev/deploy are the target-axis verbs shown in the targets list (DESIGN §13).
+const PKG_VERBS = ["build", "test", "lint"] as const;
 
 async function gatherProject(cwd: string): Promise<ProjectReport> {
   const { root, manifest, adopted, adapterName } = await inspectContext(cwd);
@@ -91,6 +97,7 @@ async function gatherProject(cwd: string): Promise<ProjectReport> {
   const base = repo ? await resolveBase(root, manifest.changeBase) : null;
   const bg = await listBackground(root);
   const resolved = await resolvePackages(root, manifest);
+  const resolvedTargets = await resolveTargets(root, manifest);
 
   const packages = resolved.map((p) => ({
     name: p.name,
@@ -99,7 +106,20 @@ async function gatherProject(cwd: string): Promise<ProjectReport> {
       string | null
     >,
   }));
-  const unwired = [...VERBS].filter((v) => !resolved.some((p) => p.commands[v]));
+  const targets = resolvedTargets.map((t) => ({
+    name: t.name,
+    dev: t.dev.length > 0,
+    deploy: !!t.deploy,
+    default: t.isDefault,
+  }));
+
+  // A verb is wired if its axis resolves it: build/test/lint from a package,
+  // dev/deploy from a target.
+  const unwired = [...VERBS].filter((v) => {
+    if (v === "dev") return !targets.some((t) => t.dev);
+    if (v === "deploy") return !targets.some((t) => t.deploy);
+    return !resolved.some((p) => p.commands[v]);
+  });
 
   return {
     name: manifest.name,
@@ -112,6 +132,7 @@ async function gatherProject(cwd: string): Promise<ProjectReport> {
       : null,
     background: bg.map((p) => ({ name: p.name, pid: p.pid })),
     packages,
+    targets,
     unwired,
   };
 }
@@ -171,8 +192,12 @@ function renderProject(p: ProjectReport): void {
   }
 
   log.info("");
-  log.info(pc.bold("  Verb wiring"));
+  log.info(pc.bold("  Packages") + pc.dim("  (build · test · lint)"));
   printMatrix(p.packages);
+
+  log.info("");
+  log.info(pc.bold("  Targets") + pc.dim("  (dev · deploy)"));
+  printTargets(p.targets);
 
   log.info("");
   printGaps(p.unwired);
@@ -184,13 +209,33 @@ function cell(present: boolean, width: number): string {
 }
 
 function printMatrix(packages: ProjectReport["packages"]): void {
-  const verbs = [...VERBS];
+  if (packages.length === 0) {
+    log.dim("  (none detected)");
+    return;
+  }
+  const verbs = [...PKG_VERBS];
   const nameW = Math.max(7, ...packages.map((p) => p.name.length));
   const header = "  " + "package".padEnd(nameW) + "   " + verbs.join("  ");
   log.info(pc.dim(header));
   for (const p of packages) {
     const cells = verbs.map((v) => cell(Boolean(p.commands[v]), v.length)).join("  ");
     log.info("  " + p.name.padEnd(nameW) + "   " + cells);
+  }
+}
+
+function printTargets(targets: ProjectReport["targets"]): void {
+  if (targets.length === 0) {
+    log.dim("  (none — add a package with a dev script, or a target in premo.json)");
+    return;
+  }
+  const nameW = Math.max(6, ...targets.map((t) => t.name.length));
+  const header = "  " + "target".padEnd(nameW) + "   dev  deploy";
+  log.info(pc.dim(header));
+  for (const t of targets) {
+    const flag = t.default ? pc.cyan(" (default)") : "";
+    log.info(
+      "  " + t.name.padEnd(nameW) + "   " + cell(t.dev, 3) + "  " + cell(t.deploy, 6) + flag,
+    );
   }
 }
 

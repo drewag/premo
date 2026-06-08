@@ -93,13 +93,17 @@ export async function fetchOrigin(root: string): Promise<void> {
   await git(root, ["fetch", "origin", "--tags"]);
 }
 
-// Commits in `tip` not reachable from `base`, newest first.
+// Commits in `tip` not reachable from `base`, newest first. When `paths` is
+// given, only commits touching those paths count (per-target pending-deploy).
 export async function logRange(
   root: string,
   base: string,
   tip = "HEAD",
+  paths: string[] = [],
 ): Promise<{ hash: string; subject: string }[]> {
-  const out = await git(root, ["log", `${base}..${tip}`, "--format=%h%x09%s"]);
+  const args = ["log", `${base}..${tip}`, "--format=%h%x09%s"];
+  if (paths.length > 0) args.push("--", ...paths);
+  const out = await git(root, args);
   if (!out) return [];
   return out
     .split("\n")
