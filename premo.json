@@ -2,6 +2,7 @@
   "name": "premo",
   "version": "0",
   "adapter": "cli",
+  "homepage": "https://github.com/drewag/premo",
   "packages": [
     {
       "name": "premo",

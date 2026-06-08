@@ -93,6 +93,9 @@ export const ProjectManifest = z.object({
   version: z.string().default("0"),
 
   adapter: z.string().optional(),
+  // Project homepage — purely informational, so anyone who stumbles on the
+  // manifest can find out what premo is and where it lives.
+  homepage: z.string().optional(),
   // A conflict-free port block allocated on adopt for projects that serve; the
   // base is exported as $PORT to `dev`/`shell` and used by `open`.
   ports: PortBlock.optional(),
