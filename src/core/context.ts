@@ -41,13 +41,12 @@ export async function inspectContext(cwd: string): Promise<Inspection> {
   const adapter = await detectAdapter(root);
   const rootPkg = await readPackageJson(root);
   const name = sanitizeProjectName(rootPkg?.name ?? path.basename(root));
-  const detected = adapter ? await adapter.targets(root) : [];
-  const targets: Record<string, { dirs: string[] }> = {};
-  for (const t of detected) targets[t.name] = { dirs: t.dirs };
+  const detected = adapter ? await adapter.packages(root) : [];
+  const packages = detected.map((d) => ({ name: d.name, dirs: d.dirs }));
   const manifest = ProjectManifest.parse({
     name,
     ...(adapter ? { adapter: adapter.name } : {}),
-    targets,
+    packages,
   });
   return { root, manifest, adopted: false, adapterName: adapter?.name ?? null };
 }
@@ -74,10 +73,9 @@ export async function adoptProject(
   const adapter = await detectAdapter(root);
   const rootPkg = await readPackageJson(root);
   const name = sanitizeProjectName(rootPkg?.name ?? path.basename(root));
-  const detected = adapter ? await adapter.targets(root) : [];
+  const detected = adapter ? await adapter.packages(root) : [];
 
-  const targets: Record<string, { dirs: string[] }> = {};
-  for (const t of detected) targets[t.name] = { dirs: t.dirs };
+  const packages = detected.map((d) => ({ name: d.name, dirs: d.dirs }));
 
   // Configure-tier adapters (e.g. xcode) bake concrete commands + extra config.
   const baked = adapter?.adopt ? await adapter.adopt(root) : {};
@@ -86,7 +84,7 @@ export async function adoptProject(
     name,
     version: "0",
     ...(adapter ? { adapter: adapter.name } : {}),
-    targets,
+    packages,
     ...baked,
   };
 
@@ -95,8 +93,8 @@ export async function adoptProject(
   // and command-style CLIs run a process but don't serve, so they skip allocation.
   let serves = false;
   if (adapter && adapter.name !== "xcode") {
-    for (const t of detected) {
-      if ((t.kind ?? "service") === "service" && (await adapter.command("dev", t, root)) !== null) {
+    for (const p of detected) {
+      if ((p.kind ?? "service") === "service" && (await adapter.command("dev", p, root)) !== null) {
         serves = true;
         break;
       }

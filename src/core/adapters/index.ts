@@ -4,11 +4,11 @@ import { nodeScriptsAdapter } from "./node-scripts.js";
 import { xcodeAdapter } from "./xcode.js";
 import { cliAdapter } from "./cli.js";
 
-// A target as discovered by an adapter, before it's merged with manifest config.
-export interface DetectedTarget {
+// A package as discovered by an adapter, before it's merged with manifest config.
+export interface DetectedPackage {
   name: string;
-  dirs: string[]; // path prefixes (relative to root) this target owns
-  cwd: string; // absolute dir to run this target's commands in
+  dirs: string[]; // path prefixes (relative to root) this package owns
+  cwd: string; // absolute dir to run this package's commands in
   scripts: Record<string, string>; // package.json scripts, if any
   // "service" (long-running server: piped/prefixed dev, earns a port) vs
   // "command" (run-once/interactive tool: inherited-TTY dev, no port). Default
@@ -19,9 +19,9 @@ export interface DetectedTarget {
 export interface Adapter {
   name: string;
   detect(root: string): Promise<boolean>;
-  targets(root: string): Promise<DetectedTarget[]>;
-  // The command to run `verb` in `target`, or null if the target can't.
-  command(verb: Verb, target: DetectedTarget, root: string): Promise<string | null>;
+  packages(root: string): Promise<DetectedPackage[]>;
+  // The command to run `verb` in `pkg`, or null if the package can't.
+  command(verb: Verb, pkg: DetectedPackage, root: string): Promise<string | null>;
   // Optional configure-tier hook: inspect the repo and contribute concrete
   // manifest fields (e.g. baked `commands`, an `xcode` block) for `premo adopt`
   // to write. Adapters that resolve everything live (the node ones) omit this.

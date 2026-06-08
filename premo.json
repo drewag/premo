@@ -2,13 +2,14 @@
   "name": "premo",
   "version": "0",
   "adapter": "cli",
-  "targets": {
-    "premo": {
+  "packages": [
+    {
+      "name": "premo",
       "dirs": [
         "."
       ]
     }
-  },
+  ],
   "commands": {
     "dev": "sh bin/dev.sh",
     "deploy": "npm publish"

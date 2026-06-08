@@ -4,6 +4,8 @@
 
 Status: **draft v0.** The daily pain isn't starting a project, it's _returning_ to one from three months ago and having to re-derive how to run, build, test, or deploy it. premo is a **universal task runner** — one fixed verb vocabulary that works in any repo, with a tiered "figure out this project" intelligence so adoption is cheap. (premo began life inside a project _scaffolder_; that composition/templates capability now lives in its own project, and premo is the task-runner spine it produces configs for.) Reference projects that shape the conventions: `~/git/odo/email` (the gold standard for affected-detection, deploy tracking, worktrees), `~/git/personal/finances`, `~/git/personal/turns`.
 
+> **Model revision (current):** the single `targets` concept used in §2/§4/§5/§7 has been split into **two axes** — `packages` (the unit of `build`/`test`/`lint`) and `targets` (the unit of `dev`/`deploy`). The authoritative spec is **§13**, which supersedes the relevant parts of those earlier sections. The word `targets` is **reassigned** from "package" to "runnable/shippable."
+
 ---
 
 ## 1. Vision
@@ -293,6 +295,15 @@ New, from the task-runner reframe:
 18. **Data-branches are out of scope** (§9.2); a stateful project opts in via tier-3 plumbing, designed separately.
 19. **Every capability is a project-level contract; scaffolding and adapters only populate it.** No feature branches on "is this a scaffolded project." `shell`, `deploy`, `open`, and the verbs all resolve from declared config (`commands`, `shells`, …). `premo new` and future adapters _write_ that config, but a hand-authored `premo.json` is first-class and behaves identically. When tempted to special-case scaffolded vs. adopted, define the contract instead and have scaffolding fulfill it.
 
+Monorepo model (§13, supersedes the single-`targets` parts of 12/13/15 above):
+
+20. **Two axes: `packages` and `targets`.** `packages` are the unit of `build`/`test`/`lint` (one per directory); `targets` are the unit of `dev`/`deploy` (a runnable/shippable of 1+ packages). The field formerly named `targets` becomes `packages`; `targets` is reassigned. Config is two top-level arrays of named objects, written **materialized-full** by `adopt` with omittable (backfilled) fields.
+21. **Recursive depth-1 package detection.** Discover members by scanning immediate child dirs where an adapter matches; **≥2 ⇒ monorepo**, polyglot (each member keeps its own child adapter), keyed by **directory name**. The monorepo adapter outranks `cli`/`node-scripts`, so a root `bin` (and root aggregator scripts) no longer hijack a monorepo into the `cli` adapter.
+22. **No verb guessing.** A package contributes only the verbs it actually defines; a missing `test`/`build`/`lint` reports honestly rather than being mapped onto a near-named script. Non-standard script names are an upstream-repo cleanup, not premo's to paper over.
+23. **Targets auto-seed 1:1 from packages; composites are authored.** Every package with a `dev` seeds a same-named target; every package with a `deploy:<dirname>` (or own `deploy`) script gets a deploy. Only multi-package targets (compose stacks) are hand/AI-authored. **`compose` is first-class.** `default` marks the bare-`premo dev` target.
+24. **`dev` run method is derived** (`compose` → `command` → member packages' dev), **ports moved onto targets** ($PORT injected), and **`deploy` is per-target** with bare `premo deploy` an interactive multi-select pre-checked to the pending set (`--yes` non-interactive, `--force` to redeploy).
+25. **premo detects, but does not infer topology.** Packages, 1:1 targets, and the `deploy:<name>` convention auto-detect; which compose service is infra / how services wire is confirmed by AI/human. That boundary keeps the config declarative without a DSL.
+
 ---
 
 ## 11. The scaffolder (a separate project)
@@ -318,6 +329,121 @@ premo grew out of a project _scaffolder_ — composing a typed monorepo from reu
 ### Testing implications
 
 Unit tests over **fixture repos that represent adopted projects** — a yarn-workspaces monorepo, a single-package node app, a minimal Xcode project — asserting adapter detection, affected-target resolution against scripted git states, `lint --dry` on a changed-file set, and `deploy` ref bookkeeping against a throwaway git repo.
+
+---
+
+## 13. Monorepo model — packages & targets
+
+> **Supersedes the single-`targets` model in §2, §4, §5, §6.2–6.5, and §7** for multi-unit repos. Validated against `~/git/odo/email`. The field formerly called `targets` (dirs + verb commands) is **renamed `packages`**; `targets` is **reassigned** to the run/deploy axis below. A single-package repo still works: it has one package, and one auto-seeded target equal to it, so the two axes coincide invisibly.
+
+### 13.1 Two axes
+
+A non-trivial repo has two kinds of unit, at different granularities:
+
+- **Packages** — the unit of `build` / `test` / `lint`. One per source directory. The "what code exists" map; the affected graph (§4) is computed here.
+- **Targets** — the unit of `dev` / `deploy`. A _runnable/shippable_ composed of **one or more packages** (+ infra). Does **not** map 1:1 to packages.
+
+| verb                | axis         | unit                                            |
+| ------------------- | ------------ | ----------------------------------------------- |
+| build / test / lint | **packages** | a directory of code                             |
+| dev / deploy        | **targets**  | a runnable/shippable composition of 1+ packages |
+
+Conflating them is what made `dev` awkward: build/test/lint decompose per directory, but "run the app" and "ship the service" are compositions — a compose stack spanning five packages; a deploy that may bundle a package with its `shared` lib. The split is principled: **inner-loop verbs (build/test/lint) are per-package; outer-loop verbs (dev/deploy) are per-target.**
+
+### 13.2 Detecting packages — recursive, depth-1
+
+Replaces the workspaces-only detection of §7 with a discovery that also handles **manual** monorepos (no `workspaces` field), which is the common product-monorepo shape.
+
+Adapter precedence: `xcode(root) → workspaces(declared) → monorepo(discovered) → cli → node-scripts`.
+
+- **monorepo(discovered):** scan the repo's **immediate child directories only (depth 1)**; keep each child where `detectAdapter(child) ≠ null`. If **≥2** members are found, the repo is a monorepo.
+- Each member resolves its **own child adapter** via the normal resolution — so the monorepo is **polyglot** (N node packages + an `xcode` member + a `cli`, all in one repo).
+- Packages are **keyed by directory name**, not package name. Required: in `odo/email`, `frontend`'s package is named `email` and `marketing`'s is named `odo`; directory names are the stable, collision-free identifiers.
+- When the monorepo adapter wins, the **root's own `bin` and aggregator scripts are ignored** — this is what stops a dev-tool `bin` at the root (odo's `bin/odo.ts`) from hijacking detection into the `cli` adapter and mapping `dev` to "run the CLI."
+
+Each package's `build`/`test`/`lint` come from its child adapter (its own `package.json` scripts, or `xcodebuild` for an xcode member). A package contributes **only the verbs it actually has** — premo must **not** guess (e.g. it must not map a missing `test` onto a `test:stores`); a package with no `test` reports "no test for this package," which is the honest signal that the _repo_ should standardize its script names.
+
+### 13.3 Detecting targets — auto-seed, then curate
+
+- **Auto-seed (1:1):** every package with a detected `dev` script seeds a same-named target whose run method is that package's dev. Every package with a deploy mapping (a root `deploy:<dirname>` script, or its own `deploy` script) gets a `deploy` on its target. So in practice most targets _are_ 1:1 with a package and need no authoring.
+- **Curate (1:many):** the genuinely composite targets — a `compose` stack spanning several packages — are declared by hand/AI. **`compose` is first-class** (premo knows docker compose as a substrate, the way it knows xcode).
+- **`default`** marks the target that bare `premo dev` brings up.
+
+This is the gradient: simple repos get targets for free; complex repos author only the compositions.
+
+### 13.4 Config shape
+
+Top-level, the manifest carries two arrays of objects, each identified by `name`. `premo adopt` writes them **materialized-full** (every detected package and seeded target is written out, so you can see and edit exactly what premo found); any field equal to detection may be deleted and premo backfills it at load.
+
+```
+package = { name, dir?, commands?: { build?, test?, lint? }, deps?: [pkgName…] }
+target  = { name, packages?: [pkgName…], compose?, command?, deploy?, ports?: { base, block? }, default? }
+```
+
+- A `package` and a `target` may share a name (separate namespaces) — natural, since the `backend` target runs/deploys the `backend` package.
+- **`deps`** on a package are the affected fan-out edges of §4 (e.g. `shared` → its consumers), now expressed package-to-package.
+- **`packages`** on a target is what it comprises — it drives "pending deploy" / affected for the target (the frontend target redeploys when `shared` changes).
+- **`ports`** moved onto the **target** (each standalone runnable owns its port; a `compose` target's ports live in the compose file). The base is injected as `$PORT`; Vite/Next get `--port` forwarding as today.
+
+### 13.5 Resolution per verb
+
+- **`build` / `test` / `lint`** → **packages**, affected-aware (§4). `premo build [package]` for one; default = affected; `--all` = every package.
+- **`dev`** → **targets**. `premo dev` runs the `default` target; `premo dev <target>` runs one. A target's run method is **derived**, in priority order:
+  1. `compose` present → `docker compose -f <file> up` (supervised by §6.1, `$PORT`/env injected);
+  2. `command` present → run it (the leaf escape hatch);
+  3. else → run the dev scripts of its member `packages` that have one.
+- **`deploy`** → **targets** (§6.5 machinery, now keyed by target; the target's member packages drive the undeployed-commit diff against `deployed/<target>`). `premo deploy <target>` ships one directly; bare `premo deploy` presents an **interactive multi-select pre-checked to the pending set** (targets with member-package changes since their deploy ref), with `--yes` for the non-interactive path and `--force` to redeploy an up-to-date target.
+
+### 13.6 Worked example — `odo/email`
+
+The materialized `premo.json` (`adopt` writes this; everything except the `stack` target auto-detects):
+
+```jsonc
+{
+  "name": "odo-email",
+  "packages": [
+    { "name": "backend" },
+    { "name": "frontend" },
+    { "name": "marketing" },
+    { "name": "browser" },
+    { "name": "shared" },
+    { "name": "cli" },
+    { "name": "react-email" },
+    { "name": "training" },
+    { "name": "ios" },
+  ],
+  "targets": [
+    { "name": "stack", "compose": "docker-compose.yml", "default": true },
+    {
+      "name": "frontend",
+      "packages": ["frontend", "shared"],
+      "deploy": "yarn deploy:frontend",
+      "ports": { "base": 3000 },
+    },
+    {
+      "name": "backend",
+      "packages": ["backend", "shared"],
+      "deploy": "yarn deploy:backend",
+      "ports": { "base": 3010 },
+    },
+    {
+      "name": "marketing",
+      "packages": ["marketing"],
+      "deploy": "yarn deploy:marketing",
+      "ports": { "base": 3001 },
+    },
+    { "name": "browser", "packages": ["browser"], "deploy": "yarn deploy:browser" },
+    { "name": "react-email", "packages": ["react-email"] },
+    { "name": "ios", "packages": ["ios"] },
+  ],
+}
+```
+
+Reading it: `premo dev` → the `stack` (compose: `db+redis+qdrant+backend+worker+frontend+react-email`). `premo dev frontend` → frontend's standalone Vite on `:3000` (`shared` rides along only for affected/deploy). `premo deploy` → a picker over `{frontend, backend, marketing, browser}` pre-checked to pending; `premo deploy marketing` ships it directly. `premo build`/`test`/`lint [package]` → packages, affected-aware. **The only hand/AI-authored line is the `stack` target** — the proof the config stays declarative (premo acts on nouns it understands) without becoming either a programming language or a pointless wrapper around scripts. You then prune any auto-seeded standalone target that only ever runs inside `stack` (e.g. `backend`, `react-email`).
+
+### 13.7 Honest scope boundary
+
+premo detects packages, seeds 1:1 targets, and maps the `deploy:<name>` convention — but it does **not** try to auto-infer a repo's _topology_ (which compose service is infra, who wires to whom). That wiring (the composite `dev` targets) is confirmed by AI/human. This is the line that keeps premo from needing either magic or a config DSL, and it's exactly where "reasonable to require AI to wire up a complex repo" lands.
 
 ---
 

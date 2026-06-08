@@ -18,17 +18,19 @@ export const ShellSpec = z
   });
 export type ShellSpec = z.infer<typeof ShellSpec>;
 
-// A target is a sub-unit of a repo (a workspace or a package). `dirs` are the
-// path prefixes it owns; `affects` are other targets a change here also marks
-// affected (fan-out); `affectsExcept` are path-prefix exceptions to that
-// fan-out. `commands` are per-target verb overrides.
-export const TargetConfig = z.object({
+// A package is a code sub-unit of a repo — the unit of build/test/lint (DESIGN
+// §13). `dirs` are the path prefixes it owns; `affects` are other packages a
+// change here also marks affected (fan-out); `affectsExcept` are path-prefix
+// exceptions to that fan-out. `commands` are per-package verb overrides. (The
+// run/deploy axis — `targets` — lands in a later slice; §13.3.)
+export const PackageConfig = z.object({
+  name: z.string(),
   dirs: z.array(z.string()).default([]),
   affects: z.array(z.string()).default([]),
   affectsExcept: z.array(z.string()).default([]),
   commands: z.record(z.string()).default({}),
 });
-export type TargetConfig = z.infer<typeof TargetConfig>;
+export type PackageConfig = z.infer<typeof PackageConfig>;
 
 export const DeployConfig = z.object({
   // Single env ⇒ refs are `deployed/<target>`; multiple ⇒ `deployed/<env>/<target>`.
@@ -76,7 +78,9 @@ export const ProjectManifest = z.object({
   // Named interactive shells (e.g. `db` → psql).
   shells: z.record(ShellSpec).default({}),
   commands: z.record(z.string()).default({}),
-  targets: z.record(TargetConfig).default({}),
+  // The build/test/lint unit (DESIGN §13). Array of named packages; mostly
+  // auto-detected and written materialized by `premo adopt`.
+  packages: z.array(PackageConfig).default([]),
   changeBase: z.string().default("origin/main"),
   affectedCommand: z.string().nullable().optional(),
   deploy: DeployConfig.optional(),

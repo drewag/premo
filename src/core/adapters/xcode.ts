@@ -11,7 +11,7 @@ import {
   projectFlag,
   xcodeCommands,
 } from "../xcode.js";
-import { type Adapter, type DetectedTarget } from "./index.js";
+import { type Adapter, type DetectedPackage } from "./index.js";
 
 // Native Apple project (.xcodeproj / .xcworkspace). One target per project;
 // `premo test` runs the whole scheme (unit + UI suites). The scheme, bundle id,
@@ -24,7 +24,7 @@ export const xcodeAdapter: Adapter = {
     return (await findXcodeProject(root)) !== null;
   },
 
-  async targets(root: string): Promise<DetectedTarget[]> {
+  async packages(root: string): Promise<DetectedPackage[]> {
     const proj = await findXcodeProject(root);
     if (!proj) return [];
     return [{ name: sanitizeProjectName(proj.name), dirs: ["."], cwd: root, scripts: {} }];
@@ -33,7 +33,7 @@ export const xcodeAdapter: Adapter = {
   // Best-effort live commands (used for the `doctor` preview before adopt bakes
   // concrete ones). Guesses the scheme as the project basename — correct for the
   // common single-scheme case; the first real verb auto-adopts and replaces these.
-  async command(verb: Verb, _target: DetectedTarget, root: string): Promise<string | null> {
+  async command(verb: Verb, _pkg: DetectedPackage, root: string): Promise<string | null> {
     const proj = await findXcodeProject(root);
     if (!proj) return null;
     const cmds = xcodeCommands(projectFlag(proj), proj.name);

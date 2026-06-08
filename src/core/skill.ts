@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { VERBS, type Verb } from "../manifest/types.js";
 import { inspectContext } from "./context.js";
-import { resolveTargets } from "./targets.js";
+import { resolvePackages } from "./packages.js";
 
 // The skill tier (DESIGN §3/§7): when convention + configure can't produce a
 // working config, premo emits a SKILL.md — a self-contained task file that
@@ -90,12 +90,12 @@ export interface SkillContext {
 
 export async function gatherSkillContext(cwd: string): Promise<SkillContext> {
   const { root, manifest, adapterName } = await inspectContext(cwd);
-  const targets = await resolveTargets(root, manifest);
+  const packages = await resolvePackages(root, manifest);
 
   const wired: { verb: Verb; command: string }[] = [];
   const unwired: Verb[] = [];
   for (const verb of VERBS) {
-    const hit = targets.find((t) => t.commands[verb]);
+    const hit = packages.find((p) => p.commands[verb]);
     if (hit) wired.push({ verb, command: hit.commands[verb]! });
     else unwired.push(verb);
   }
@@ -182,8 +182,8 @@ ${unwiredLines}
    }
    \`\`\`
 
-   For a monorepo, declare \`targets\` (each with \`dirs\`) and put per-target
-   overrides under \`targets.<name>.commands.<verb>\`. See DESIGN.md §4–§5.
+   For a monorepo, declare \`packages\` (each with a \`name\` and \`dirs\`) and put
+   per-package overrides under that package's \`commands\`. See DESIGN.md §4, §13.
 3. If the project serves HTTP in dev, have the \`dev\` command bind \`$PORT\`
    (premo exports an allocated port). Forward it explicitly if the tool ignores
    the env var (e.g. Vite needs \`--port $PORT\`).

@@ -20,7 +20,7 @@ describe("node-scripts adapter", () => {
     await pkg(root, { name: "app", scripts: { build: "tsc", dev: "next dev" } });
 
     expect(await nodeScriptsAdapter.detect(root)).toBe(true);
-    const targets = await nodeScriptsAdapter.targets(root);
+    const targets = await nodeScriptsAdapter.packages(root);
     expect(targets).toHaveLength(1);
     expect(targets[0]!.name).toBe("app");
     expect(targets[0]!.dirs).toEqual(["."]);
@@ -33,14 +33,14 @@ describe("node-scripts adapter", () => {
     const root = await tmp();
     await pkg(root, { name: "app", scripts: { build: "tsc" } });
     await writeFile(path.join(root, "package-lock.json"), "{}");
-    const targets = await nodeScriptsAdapter.targets(root);
+    const targets = await nodeScriptsAdapter.packages(root);
     expect(await nodeScriptsAdapter.command("build", targets[0]!, root)).toBe("npm run build");
   });
 
   it("maps dev to the 'start' alias when there's no dev script", async () => {
     const root = await tmp();
     await pkg(root, { name: "app", scripts: { start: "node ." } });
-    const targets = await nodeScriptsAdapter.targets(root);
+    const targets = await nodeScriptsAdapter.packages(root);
     expect(await nodeScriptsAdapter.command("dev", targets[0]!, root)).toBe("yarn start");
   });
 
@@ -50,7 +50,7 @@ describe("node-scripts adapter", () => {
       name: "app",
       scripts: { dev: "vite", build: "vite build", test: "vitest run" },
     });
-    const [t] = await nodeScriptsAdapter.targets(root);
+    const [t] = await nodeScriptsAdapter.packages(root);
     expect(await nodeScriptsAdapter.command("dev", t!, root)).toBe(
       "yarn dev ${PORT:+--port $PORT}",
     );
@@ -63,7 +63,7 @@ describe("node-scripts adapter", () => {
     const root = await tmp();
     await pkg(root, { name: "app", scripts: { dev: "vite" } });
     await writeFile(path.join(root, "package-lock.json"), "{}");
-    const [t] = await nodeScriptsAdapter.targets(root);
+    const [t] = await nodeScriptsAdapter.packages(root);
     expect(await nodeScriptsAdapter.command("dev", t!, root)).toBe(
       "npm run dev -- ${PORT:+--port $PORT}",
     );
@@ -72,7 +72,7 @@ describe("node-scripts adapter", () => {
   it("leaves non-Vite dev servers to use $PORT themselves", async () => {
     const root = await tmp();
     await pkg(root, { name: "app", scripts: { dev: "node server.js" } });
-    const [t] = await nodeScriptsAdapter.targets(root);
+    const [t] = await nodeScriptsAdapter.packages(root);
     expect(await nodeScriptsAdapter.command("dev", t!, root)).toBe("yarn dev");
   });
 });
@@ -86,7 +86,7 @@ describe("workspaces adapter", () => {
     await pkg(path.join(root, "app"), { name: "app", scripts: { dev: "serve" } });
 
     expect(await workspacesAdapter.detect(root)).toBe(true);
-    const targets = await workspacesAdapter.targets(root);
+    const targets = await workspacesAdapter.packages(root);
     const byName = Object.fromEntries(targets.map((t) => [t.name, t]));
     expect(Object.keys(byName).sort()).toEqual(["a", "app", "b"]);
     expect(byName.a!.dirs).toEqual(["packages/a/"]);
@@ -102,7 +102,7 @@ describe("workspaces adapter", () => {
     await pkg(path.join(root, "packages/x"), { name: "x", scripts: { build: "tsc" } });
 
     expect(await workspacesAdapter.detect(root)).toBe(true);
-    const [t] = await workspacesAdapter.targets(root);
+    const [t] = await workspacesAdapter.packages(root);
     expect(t!.name).toBe("x");
     expect(await workspacesAdapter.command("build", t!, root)).toBe("pnpm build");
     expect((await detectAdapter(root))?.name).toBe("workspaces");

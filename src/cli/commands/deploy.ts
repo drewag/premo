@@ -3,7 +3,7 @@ import { execa } from "execa";
 import readline from "node:readline/promises";
 import pc from "picocolors";
 import { ensureContext } from "../../core/context.js";
-import { resolveTargets, type Target } from "../../core/targets.js";
+import { resolvePackages, type Package } from "../../core/packages.js";
 import { nextVersion } from "../../core/version.js";
 import { resolveDeployedRef, type DeployedRef } from "../../core/deploy.js";
 import {
@@ -20,7 +20,7 @@ import {
 import { log } from "../../core/logger.js";
 
 interface Plan {
-  target: Target;
+  target: Package;
   ref: DeployedRef;
   commits: { hash: string; subject: string }[];
   upToDate: boolean;
@@ -40,7 +40,7 @@ export function register(program: Command): void {
         opts: { force?: boolean; yes?: boolean; env?: string },
       ) => {
         const ctx = await ensureContext(process.cwd());
-        const targets = await resolveTargets(ctx.root, ctx.manifest);
+        const targets = await resolvePackages(ctx.root, ctx.manifest);
 
         let deployable = targets.filter((t) => t.commands.deploy);
         if (targetArg) {

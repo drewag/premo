@@ -1,6 +1,6 @@
 import type { Argument, Command, Option } from "commander";
 import { inspectContext } from "./context.js";
-import { resolveTargets } from "./targets.js";
+import { resolvePackages } from "./packages.js";
 
 // Reflection-driven shell completion. Command names, flags, and option/argument
 // metadata all come from introspecting the Commander program, so new verbs and
@@ -17,8 +17,8 @@ export interface Candidate {
 
 async function targetNames(cwd: string): Promise<string[]> {
   const { root, manifest } = await inspectContext(cwd);
-  const targets = await resolveTargets(root, manifest);
-  return targets.map((t) => t.name);
+  const packages = await resolvePackages(root, manifest);
+  return packages.map((p) => p.name);
 }
 
 async function shellNames(cwd: string): Promise<string[]> {

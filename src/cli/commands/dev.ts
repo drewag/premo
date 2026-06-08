@@ -4,7 +4,7 @@ import path from "node:path";
 import readline from "node:readline";
 import pc from "picocolors";
 import { ensureContext, type Context } from "../../core/context.js";
-import { resolveTargets, type Target } from "../../core/targets.js";
+import { resolvePackages, type Package } from "../../core/packages.js";
 import { spawnDetached } from "../../core/supervise.js";
 import { shq } from "../../core/shell.js";
 import { installFooter, type Footer } from "../../core/footer.js";
@@ -74,7 +74,7 @@ async function runAdoptedDev(
   extraEnv: NodeJS.ProcessEnv = {},
   passthrough: string[] = [],
 ): Promise<void> {
-  const targets = await resolveTargets(ctx.root, ctx.manifest);
+  const targets = await resolvePackages(ctx.root, ctx.manifest);
   let devTargets = targets.filter((t) => t.commands.dev);
 
   if (targetArg) {
@@ -283,7 +283,7 @@ async function runAdoptedDev(
 // colors, and Ctrl-C work), appending shell-quoted passthrough args. The exit
 // code is propagated so `premo dev -- <args>` is scriptable.
 async function runCommandDev(
-  t: Target,
+  t: Package,
   env: NodeJS.ProcessEnv,
   passthrough: string[],
 ): Promise<void> {

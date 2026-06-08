@@ -21,7 +21,10 @@ async function fixture(): Promise<string> {
     JSON.stringify({
       name: "demo",
       commands: { dev: "x" },
-      targets: { web: { dirs: ["web/"] }, api: { dirs: ["api/"] } },
+      packages: [
+        { name: "web", dirs: ["web/"] },
+        { name: "api", dirs: ["api/"] },
+      ],
       shells: { db: { kind: "command", command: ["psql"] } },
       deploy: { envs: ["prod", "staging"] },
     }),

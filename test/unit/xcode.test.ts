@@ -94,10 +94,10 @@ describe("findXcodeProject / adapter detection", () => {
     expect((await detectAdapter(root))?.name).toBe("xcode");
   });
 
-  it("exposes one target rooted at the repo", async () => {
+  it("exposes one package rooted at the repo", async () => {
     const root = await tmp();
     await mkdir(path.join(root, "Awooga.xcodeproj"));
-    const targets = await xcodeAdapter.targets(root);
+    const targets = await xcodeAdapter.packages(root);
     expect(targets).toHaveLength(1);
     expect(targets[0]!.name).toBe("awooga");
     expect(targets[0]!.dirs).toEqual(["."]);
@@ -129,7 +129,7 @@ describe("xcodeCommands / adapter.command", () => {
   it("only offers lint when a .swiftlint.yml exists; never a deploy default", async () => {
     const root = await tmp();
     await mkdir(path.join(root, "Awooga.xcodeproj"));
-    const [t] = await xcodeAdapter.targets(root);
+    const [t] = await xcodeAdapter.packages(root);
     expect(await xcodeAdapter.command("lint", t!, root)).toBeNull();
     expect(await xcodeAdapter.command("deploy", t!, root)).toBeNull();
     expect(await xcodeAdapter.command("build", t!, root)).toContain("xcodebuild");

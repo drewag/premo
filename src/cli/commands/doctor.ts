@@ -3,7 +3,7 @@ import { execa } from "execa";
 import pc from "picocolors";
 import { VERBS, type Verb } from "../../manifest/types.js";
 import { inspectContext } from "../../core/context.js";
-import { resolveTargets } from "../../core/targets.js";
+import { resolvePackages } from "../../core/packages.js";
 import { isGitRepo, resolveBase } from "../../core/git.js";
 import { listBackground } from "../../core/supervise.js";
 import { log } from "../../core/logger.js";
@@ -81,7 +81,7 @@ interface ProjectReport {
   git: { repo: boolean; base: string | null };
   ports: { base: number; block: number } | null;
   background: { name: string; pid: number }[];
-  targets: { name: string; commands: Record<Verb, string | null> }[];
+  packages: { name: string; commands: Record<Verb, string | null> }[];
   unwired: Verb[];
 }
 
@@ -90,16 +90,16 @@ async function gatherProject(cwd: string): Promise<ProjectReport> {
   const repo = await isGitRepo(root);
   const base = repo ? await resolveBase(root, manifest.changeBase) : null;
   const bg = await listBackground(root);
-  const resolved = await resolveTargets(root, manifest);
+  const resolved = await resolvePackages(root, manifest);
 
-  const targets = resolved.map((t) => ({
-    name: t.name,
-    commands: Object.fromEntries(VERBS.map((v) => [v, t.commands[v] ?? null])) as Record<
+  const packages = resolved.map((p) => ({
+    name: p.name,
+    commands: Object.fromEntries(VERBS.map((v) => [v, p.commands[v] ?? null])) as Record<
       Verb,
       string | null
     >,
   }));
-  const unwired = [...VERBS].filter((v) => !resolved.some((t) => t.commands[v]));
+  const unwired = [...VERBS].filter((v) => !resolved.some((p) => p.commands[v]));
 
   return {
     name: manifest.name,
@@ -111,7 +111,7 @@ async function gatherProject(cwd: string): Promise<ProjectReport> {
       ? { base: manifest.ports.base, block: manifest.ports.block ?? 100 }
       : null,
     background: bg.map((p) => ({ name: p.name, pid: p.pid })),
-    targets,
+    packages,
     unwired,
   };
 }
@@ -172,7 +172,7 @@ function renderProject(p: ProjectReport): void {
 
   log.info("");
   log.info(pc.bold("  Verb wiring"));
-  printMatrix(p.targets);
+  printMatrix(p.packages);
 
   log.info("");
   printGaps(p.unwired);
@@ -183,14 +183,14 @@ function cell(present: boolean, width: number): string {
   return sym + " ".repeat(Math.max(0, width - 1));
 }
 
-function printMatrix(targets: ProjectReport["targets"]): void {
+function printMatrix(packages: ProjectReport["packages"]): void {
   const verbs = [...VERBS];
-  const nameW = Math.max(6, ...targets.map((t) => t.name.length));
-  const header = "  " + "target".padEnd(nameW) + "   " + verbs.join("  ");
+  const nameW = Math.max(7, ...packages.map((p) => p.name.length));
+  const header = "  " + "package".padEnd(nameW) + "   " + verbs.join("  ");
   log.info(pc.dim(header));
-  for (const t of targets) {
-    const cells = verbs.map((v) => cell(Boolean(t.commands[v]), v.length)).join("  ");
-    log.info("  " + t.name.padEnd(nameW) + "   " + cells);
+  for (const p of packages) {
+    const cells = verbs.map((v) => cell(Boolean(p.commands[v]), v.length)).join("  ");
+    log.info("  " + p.name.padEnd(nameW) + "   " + cells);
   }
 }
 

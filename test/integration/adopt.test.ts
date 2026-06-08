@@ -8,14 +8,14 @@ describe("adopt (integration)", () => {
     expect(r.exitCode).toBe(0);
     const out = JSON.parse(r.stdout);
     expect(out.adapter).toBe("node-scripts");
-    expect(out.targets).toContain("app");
+    expect(out.packages).toContain("app");
   });
 
   it("detects a workspaces monorepo with a target per package", async () => {
     const dir = await makeWorkspaces();
     const out = JSON.parse((await runPremo(["adopt", "--json"], { cwd: dir })).stdout);
     expect(out.adapter).toBe("workspaces");
-    expect(new Set(out.targets)).toEqual(new Set(["a", "b"]));
+    expect(new Set(out.packages)).toEqual(new Set(["a", "b"]));
   });
 
   it("detects a CLI package and bakes dev + deploy, no port", async () => {

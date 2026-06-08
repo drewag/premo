@@ -19,7 +19,7 @@ function routeExeca(overrides: Record<string, { exitCode?: number; stdout?: stri
   );
 }
 
-// A context with no adapter (empty tmp root) so resolveTargets uses manifest config.
+// A context with no adapter (empty tmp root) so resolvePackages uses manifest config.
 async function ctxWith(extra: Partial<ProjectManifestInput>): Promise<Context> {
   const root = await mkdtemp(path.join(tmpdir(), "premo-run-"));
   const manifest = ProjectManifest.parse({ name: "demo", ...extra });
@@ -27,10 +27,10 @@ async function ctxWith(extra: Partial<ProjectManifestInput>): Promise<Context> {
 }
 
 const TWO_TARGETS: Partial<ProjectManifestInput> = {
-  targets: {
-    api: { dirs: ["api/"], commands: { build: "build-api" } },
-    web: { dirs: ["web/"], commands: { build: "build-web" } },
-  },
+  packages: [
+    { name: "api", dirs: ["api/"], commands: { build: "build-api" } },
+    { name: "web", dirs: ["web/"], commands: { build: "build-web" } },
+  ],
 };
 
 // commands actually run (the verb commands), in call order

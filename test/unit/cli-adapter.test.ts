@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { detectAdapter } from "../../src/core/adapters/index.js";
 import { cliAdapter } from "../../src/core/adapters/cli.js";
-import { resolveTargets } from "../../src/core/targets.js";
+import { resolvePackages } from "../../src/core/packages.js";
 import { adoptProject } from "../../src/core/context.js";
 import { ProjectManifest } from "../../src/manifest/types.js";
 
@@ -26,7 +26,7 @@ describe("cli adapter", () => {
     await pkg(objRoot, { name: "tool", bin: { tool: "./dist/cli.js" } });
     expect(await cliAdapter.detect(objRoot)).toBe(true);
 
-    const targets = await cliAdapter.targets(objRoot);
+    const targets = await cliAdapter.packages(objRoot);
     expect(targets).toHaveLength(1);
     expect(targets[0]!.kind).toBe("command");
     expect(targets[0]!.dirs).toEqual(["."]);
@@ -45,7 +45,7 @@ describe("cli adapter", () => {
       bin: "./dist/cli.js",
       scripts: { build: "tsc", test: "vitest", lint: "eslint ." },
     });
-    const [t] = await cliAdapter.targets(root);
+    const [t] = await cliAdapter.packages(root);
     expect(await cliAdapter.command("build", t!, root)).toBe("yarn build");
     expect(await cliAdapter.command("test", t!, root)).toBe("yarn test");
     expect(await cliAdapter.command("lint", t!, root)).toBe("yarn lint");
@@ -60,7 +60,7 @@ describe("cli adapter", () => {
     });
     await mkdir(path.join(root, "bin"), { recursive: true });
     await writeFile(path.join(root, "bin/premo.ts"), "// entry");
-    const [t] = await cliAdapter.targets(root);
+    const [t] = await cliAdapter.packages(root);
     // tsx is resolved through the package manager (default yarn, quiet) so it's
     // found on PATH and stdout stays clean when premo shells the dev command out.
     expect(await cliAdapter.command("dev", t!, root)).toBe("yarn --silent tsx bin/premo.ts");
@@ -76,19 +76,19 @@ describe("cli adapter", () => {
     await writeFile(path.join(root, "package-lock.json"), "{}");
     await mkdir(path.join(root, "bin"), { recursive: true });
     await writeFile(path.join(root, "bin/premo.ts"), "// entry");
-    const [t] = await cliAdapter.targets(root);
+    const [t] = await cliAdapter.packages(root);
     expect(await cliAdapter.command("dev", t!, root)).toBe("npx tsx bin/premo.ts");
   });
 
   it("falls back to a dev/start script, then to `node <bin>`", async () => {
     const scriptRoot = await tmp();
     await pkg(scriptRoot, { name: "tool", bin: "./dist/cli.js", scripts: { start: "node ." } });
-    const [st] = await cliAdapter.targets(scriptRoot);
+    const [st] = await cliAdapter.packages(scriptRoot);
     expect(await cliAdapter.command("dev", st!, scriptRoot)).toBe("yarn start");
 
     const bareRoot = await tmp();
     await pkg(bareRoot, { name: "tool", bin: "./dist/cli.js" });
-    const [bt] = await cliAdapter.targets(bareRoot);
+    const [bt] = await cliAdapter.packages(bareRoot);
     expect(await cliAdapter.command("dev", bt!, bareRoot)).toBe("node dist/cli.js");
   });
 
@@ -115,11 +115,11 @@ describe("cli adapter", () => {
     expect((await detectAdapter(root))?.name).toBe("workspaces");
   });
 
-  it("carries kind 'command' through resolveTargets", async () => {
+  it("carries kind 'command' through resolvePackages", async () => {
     const root = await tmp();
     await pkg(root, { name: "tool", bin: "./dist/cli.js", scripts: { build: "tsc" } });
     const manifest = ProjectManifest.parse({ name: "tool", adapter: "cli" });
-    const targets = await resolveTargets(root, manifest);
+    const targets = await resolvePackages(root, manifest);
     expect(targets).toHaveLength(1);
     expect(targets[0]!.kind).toBe("command");
   });

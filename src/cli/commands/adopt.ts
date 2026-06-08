@@ -27,7 +27,7 @@ export function register(program: Command): void {
           file: PROJECT_FILE,
           name: manifest.name,
           adapter: manifest.adapter ?? null,
-          targets: Object.keys(manifest.targets),
+          packages: manifest.packages.map((p) => p.name),
           commands: manifest.commands,
           ports: manifest.ports ?? null,
           xcode: manifest.xcode ?? null,

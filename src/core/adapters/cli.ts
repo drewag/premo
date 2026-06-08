@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
-import { type Adapter, type DetectedTarget } from "./index.js";
+import { type Adapter, type DetectedPackage } from "./index.js";
 import {
   type PackageJson,
   binEntry,
@@ -56,14 +56,14 @@ export const cliAdapter: Adapter = {
     return !!pkg && binEntry(pkg) !== null;
   },
 
-  async targets(root: string): Promise<DetectedTarget[]> {
+  async packages(root: string): Promise<DetectedPackage[]> {
     const pkg = await readPackageJson(root);
     if (!pkg) return [];
     const name = sanitizeProjectName(pkg.name ?? path.basename(root));
     return [{ name, dirs: ["."], cwd: root, scripts: pkg.scripts ?? {}, kind: "command" }];
   },
 
-  async command(verb: Verb, target: DetectedTarget, root: string): Promise<string | null> {
+  async command(verb: Verb, detected: DetectedPackage, root: string): Promise<string | null> {
     switch (verb) {
       case "dev": {
         const pkg = await readPackageJson(root);
@@ -72,7 +72,7 @@ export const cliAdapter: Adapter = {
       case "deploy":
         return null; // baked in adopt() when the package is publishable
       default:
-        return scriptCommandForVerb(verb, target.scripts, detectPackageManager(root));
+        return scriptCommandForVerb(verb, detected.scripts, detectPackageManager(root));
     }
   },
 

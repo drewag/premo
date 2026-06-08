@@ -1,109 +1,109 @@
 import { execa } from "execa";
 import type { Verb } from "../manifest/types.js";
 import type { Context } from "./context.js";
-import { resolveTargets, type Target } from "./targets.js";
+import { resolvePackages, type Package } from "./packages.js";
 import { changedFiles } from "./git.js";
-import { affectedTargets } from "./affected.js";
+import { affectedPackages } from "./affected.js";
 import { log } from "./logger.js";
 
 export interface VerbOptions {
   target?: string;
   all?: boolean;
-  /** narrow to affected targets by default (build/test); false ⇒ whole tree (lint). */
+  /** narrow to affected packages by default (build/test); false ⇒ whole tree (lint). */
   affected: boolean;
   /** extra env merged into each command (e.g. PREMO_XCODE_DEST). */
   env?: NodeJS.ProcessEnv;
 }
 
 interface Selection {
-  targets: Target[];
+  packages: Package[];
   note: string;
 }
 
-async function affectedNames(ctx: Context, targets: Target[]): Promise<Set<string> | null> {
+async function affectedNames(ctx: Context, packages: Package[]): Promise<Set<string> | null> {
   const cmd = ctx.manifest.affectedCommand;
   if (cmd) {
     const res = await execa(cmd, { cwd: ctx.root, shell: true, reject: false });
     if (res.exitCode === 0) {
       return new Set(res.stdout.split(/\s+/).filter(Boolean));
     }
-    log.warn(`affectedCommand failed (exit ${res.exitCode}); falling back to all targets.`);
+    log.warn(`affectedCommand failed (exit ${res.exitCode}); falling back to all packages.`);
     return null;
   }
   const { files, base } = await changedFiles(ctx.root, ctx.manifest.changeBase);
   if (!base) {
-    log.warn("no merge base found; running all targets (use --all to silence).");
+    log.warn("no merge base found; running all packages (use --all to silence).");
     return null;
   }
-  return affectedTargets(files, targets);
+  return affectedPackages(files, packages);
 }
 
-// Returns null when an explicitly-named target doesn't exist (the caller fails).
+// Returns null when an explicitly-named package doesn't exist (the caller fails).
 async function select(ctx: Context, opts: VerbOptions): Promise<Selection | null> {
-  const targets = await resolveTargets(ctx.root, ctx.manifest);
+  const packages = await resolvePackages(ctx.root, ctx.manifest);
 
   if (opts.target) {
-    const t = targets.find((x) => x.name === opts.target);
-    if (!t) {
+    const p = packages.find((x) => x.name === opts.target);
+    if (!p) {
       log.error(
-        `No target "${opts.target}". Known: ${targets.map((x) => x.name).join(", ") || "none"}`,
+        `No package "${opts.target}". Known: ${packages.map((x) => x.name).join(", ") || "none"}`,
       );
       return null;
     }
-    return { targets: [t], note: `target ${t.name}` };
+    return { packages: [p], note: `package ${p.name}` };
   }
 
-  if (opts.all || !opts.affected || targets.length <= 1) {
-    return { targets, note: opts.all ? "all targets" : "" };
+  if (opts.all || !opts.affected || packages.length <= 1) {
+    return { packages, note: opts.all ? "all packages" : "" };
   }
 
-  const names = await affectedNames(ctx, targets);
-  if (!names) return { targets, note: "all targets" };
-  const filtered = targets.filter((t) => names.has(t.name));
+  const names = await affectedNames(ctx, packages);
+  if (!names) return { packages, note: "all packages" };
+  const filtered = packages.filter((p) => names.has(p.name));
   return {
-    targets: filtered,
-    note: `affected: ${filtered.map((t) => t.name).join(", ") || "none"}`,
+    packages: filtered,
+    note: `affected: ${filtered.map((p) => p.name).join(", ") || "none"}`,
   };
 }
 
-// Run a verb across the selected targets, stopping on the first failure.
+// Run a verb across the selected packages, stopping on the first failure.
 export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Promise<void> {
   const selection = await select(ctx, opts);
   if (!selection) {
     process.exitCode = 1;
     return;
   }
-  const { targets, note } = selection;
+  const { packages, note } = selection;
   if (note) log.dim(`  ${note}`);
 
-  const runnable = targets.filter((t) => t.commands[verb]);
+  const runnable = packages.filter((p) => p.commands[verb]);
   if (runnable.length === 0) {
-    const where = targets.length === 0 ? "this project" : "the selected target(s)";
+    const where = packages.length === 0 ? "this project" : "the selected package(s)";
     log.warn(`No \`${verb}\` command resolved for ${where}.`);
     log.dim(
-      '  add one under "commands" (or targets.<name>.commands) in premo.json, run `premo adopt`,',
+      '  add one under "commands" (or packages[].commands) in premo.json, run `premo adopt`,',
     );
     log.dim("  or `premo skill` to generate a task file for a coding agent to wire it up.");
     process.exitCode = 1;
     return;
   }
 
-  for (const t of targets) {
-    const cmd = t.commands[verb];
+  for (const p of packages) {
+    const cmd = p.commands[verb];
     if (!cmd) {
-      log.dim(`  (no ${verb} command for ${t.name} — skipped)`);
+      log.dim(`  (no ${verb} command for ${p.name} — skipped)`);
       continue;
     }
-    log.step(`${verb} ${t.name}: ${cmd}`);
+    log.step(`${verb} ${p.name}: ${cmd}`);
     const res = await execa(cmd, {
-      cwd: t.cwd,
+      cwd: p.cwd,
       shell: true,
       stdio: "inherit",
       reject: false,
       env: opts.env,
     });
     if (res.exitCode !== 0) {
-      log.error(`${verb} ${t.name} failed (exit ${res.exitCode}).`);
+      log.error(`${verb} ${p.name} failed (exit ${res.exitCode}).`);
       process.exitCode = res.exitCode ?? 1;
       return;
     }

@@ -20,7 +20,7 @@ describe("inspectContext (doctor's read-only probe)", () => {
     const res = await inspectContext(dir);
     expect(res.adopted).toBe(false);
     expect(res.adapterName).toBe("node-scripts");
-    expect(res.manifest.targets.thing).toBeDefined();
+    expect(res.manifest.packages.find((p) => p.name === "thing")).toBeDefined();
     expect(existsSync(path.join(dir, "premo.json"))).toBe(false); // never writes
   });
 

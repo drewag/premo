@@ -17,6 +17,21 @@ export async function loadProject(dir: string): Promise<ProjectManifest> {
   } catch (e) {
     throw new Error(`${PROJECT_FILE} is not valid JSON: ${(e as Error).message}`);
   }
+  // Pre-split configs keyed `targets` as an object (the build/test/lint unit);
+  // that concept is now `packages` (an array). The shapes are distinguishable —
+  // a non-array `targets` means a stale config. (DESIGN §13.)
+  if (
+    raw &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    "targets" in raw &&
+    !Array.isArray((raw as Record<string, unknown>).targets)
+  ) {
+    throw new Error(
+      `${PROJECT_FILE} predates the package/target split (\`targets\` is now \`packages\`). ` +
+        `Run \`premo adopt\` to regenerate it.`,
+    );
+  }
   try {
     return ProjectManifest.parse(raw);
   } catch (e) {

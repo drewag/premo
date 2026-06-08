@@ -4,7 +4,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
-import { type Adapter, type DetectedTarget } from "./index.js";
+import { type Adapter, type DetectedPackage } from "./index.js";
 import {
   detectPackageManager,
   type PackageJson,
@@ -58,8 +58,8 @@ async function expandPattern(root: string, pattern: string): Promise<string[]> {
 }
 
 // Workspaces monorepo (yarn / npm `workspaces`, or pnpm-workspace.yaml): one
-// target per workspace package. The detected package manager drives the
-// per-package commands (`yarn`/`npm run`/`pnpm <script>`).
+// package per workspace. The detected package manager drives the per-package
+// commands (`yarn`/`npm run`/`pnpm <script>`).
 export const workspacesAdapter: Adapter = {
   name: "workspaces",
 
@@ -67,10 +67,10 @@ export const workspacesAdapter: Adapter = {
     return (await workspaceGlobs(root)).length > 0;
   },
 
-  async targets(root: string): Promise<DetectedTarget[]> {
+  async packages(root: string): Promise<DetectedPackage[]> {
     const patterns = await workspaceGlobs(root);
     const seen = new Set<string>();
-    const targets: DetectedTarget[] = [];
+    const packages: DetectedPackage[] = [];
 
     for (const pattern of patterns) {
       for (const dir of await expandPattern(root, pattern)) {
@@ -80,7 +80,7 @@ export const workspacesAdapter: Adapter = {
         seen.add(dir);
         const rel = path.relative(root, dir);
         const name = sanitizeProjectName(wsPkg.name ?? path.basename(dir));
-        targets.push({
+        packages.push({
           name,
           dirs: [rel ? `${rel}/` : "./"],
           cwd: dir,
@@ -88,11 +88,11 @@ export const workspacesAdapter: Adapter = {
         });
       }
     }
-    return targets;
+    return packages;
   },
 
-  async command(verb: Verb, target: DetectedTarget, root: string): Promise<string | null> {
+  async command(verb: Verb, pkg: DetectedPackage, root: string): Promise<string | null> {
     // Run from the workspace dir itself, so `<pm> <script>` resolves to it.
-    return scriptCommandForVerb(verb, target.scripts, detectPackageManager(root));
+    return scriptCommandForVerb(verb, pkg.scripts, detectPackageManager(root));
   },
 };

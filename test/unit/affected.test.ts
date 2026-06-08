@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { affectedTargets } from "../../src/core/affected.js";
-import type { Target } from "../../src/core/targets.js";
+import { affectedPackages } from "../../src/core/affected.js";
+import type { Package } from "../../src/core/packages.js";
 
-function t(name: string, dirs: string[], extra: Partial<Target> = {}): Target {
+function t(name: string, dirs: string[], extra: Partial<Package> = {}): Package {
   return {
     name,
     dirs,
@@ -15,43 +15,43 @@ function t(name: string, dirs: string[], extra: Partial<Target> = {}): Target {
   };
 }
 
-describe("affectedTargets", () => {
-  const targets = [
+describe("affectedPackages", () => {
+  const packages = [
     t("frontend", ["frontend/"]),
     t("backend", ["backend/", "react-email/"]),
     t("shared", ["shared/"], { affects: ["frontend", "backend"], affectsExcept: ["shared/api/"] }),
   ];
 
   it("maps a file to its owning target", () => {
-    expect(affectedTargets(["frontend/app.ts"], targets)).toEqual(new Set(["frontend"]));
+    expect(affectedPackages(["frontend/app.ts"], packages)).toEqual(new Set(["frontend"]));
   });
 
   it("maps secondary dirs (react-email → backend)", () => {
-    expect(affectedTargets(["react-email/x.tsx"], targets)).toEqual(new Set(["backend"]));
+    expect(affectedPackages(["react-email/x.tsx"], packages)).toEqual(new Set(["backend"]));
   });
 
   it("fans out via affects", () => {
-    expect(affectedTargets(["shared/util.ts"], targets)).toEqual(
+    expect(affectedPackages(["shared/util.ts"], packages)).toEqual(
       new Set(["shared", "frontend", "backend"]),
     );
   });
 
   it("suppresses fan-out for affectsExcept paths", () => {
     // Only a type-only change under shared/api/ → shared itself, no fan-out.
-    expect(affectedTargets(["shared/api/routes.ts"], targets)).toEqual(new Set(["shared"]));
+    expect(affectedPackages(["shared/api/routes.ts"], packages)).toEqual(new Set(["shared"]));
   });
 
   it("fans out when at least one change is meaningful", () => {
-    expect(affectedTargets(["shared/api/routes.ts", "shared/util.ts"], targets)).toEqual(
+    expect(affectedPackages(["shared/api/routes.ts", "shared/util.ts"], packages)).toEqual(
       new Set(["shared", "frontend", "backend"]),
     );
   });
 
   it("returns empty for files under no target", () => {
-    expect(affectedTargets(["README.md", "premo.json"], targets)).toEqual(new Set());
+    expect(affectedPackages(["README.md", "premo.json"], packages)).toEqual(new Set());
   });
 
   it("treats a '.' dir as owning everything", () => {
-    expect(affectedTargets(["anything/x"], [t("root", ["."])])).toEqual(new Set(["root"]));
+    expect(affectedPackages(["anything/x"], [t("root", ["."])])).toEqual(new Set(["root"]));
   });
 });

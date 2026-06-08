@@ -26,7 +26,7 @@ describe("verbs (integration)", () => {
     const dir = await makeNodeApp();
     const r = await runPremo(["build", "nope"], { cwd: dir });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain("No target");
+    expect(r.stderr).toContain("No package");
   });
 
   it("builds only the affected target in a monorepo", async () => {
