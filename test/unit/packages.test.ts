@@ -59,7 +59,7 @@ describe("resolvePackages", () => {
     expect(packages[0]!.commands.build).toBe("make");
   });
 
-  it("bakes build/test/dev from a package's xcode block (DESIGN §13.2)", async () => {
+  it("derives build/test/dev live from a package's xcode block (DESIGN §13.2)", async () => {
     const root = await tmp();
     const manifest = ProjectManifest.parse({
       name: "mono",
@@ -73,5 +73,53 @@ describe("resolvePackages", () => {
       'xcodebuild -project odo.xcodeproj -scheme odo -destination "$PREMO_XCODE_DEST" build',
     );
     expect(ios.commands.dev).toContain("PREMO_XCODE_BUNDLE_ID");
+  });
+
+  it("implies the xcode runner from a single-app top-level xcode block", async () => {
+    const root = await tmp();
+    await mkdir(path.join(root, "Awooga.xcodeproj")); // the xcode adapter detects the app
+    const manifest = ProjectManifest.parse({
+      name: "awooga",
+      adapter: "xcode",
+      xcode: { project: "Awooga.xcodeproj", scheme: "Awooga" },
+    });
+    const app = (await resolvePackages(root, manifest)).find((p) => p.name === "awooga")!;
+    // No commands baked into the manifest — they come from the implied runner,
+    // using the resolved scheme (not a basename guess).
+    expect(manifest.commands).toEqual({});
+    expect(app.commands.build).toBe(
+      'xcodebuild -project Awooga.xcodeproj -scheme Awooga -destination "$PREMO_XCODE_DEST" build',
+    );
+    expect(app.commands.test).toContain('-destination "$PREMO_XCODE_DEST" test');
+    expect(app.commands.dev).toContain("PREMO_XCODE_BUNDLE_ID");
+  });
+
+  it("lets a literal command override the implied xcode runner per verb", async () => {
+    const root = await tmp();
+    await mkdir(path.join(root, "Awooga.xcodeproj"));
+    const manifest = ProjectManifest.parse({
+      name: "awooga",
+      adapter: "xcode",
+      xcode: { project: "Awooga.xcodeproj", scheme: "Awooga" },
+      commands: { build: "make ios" }, // raw string wins; dev/test still implied
+    });
+    const app = (await resolvePackages(root, manifest)).find((p) => p.name === "awooga")!;
+    expect(app.commands.build).toBe("make ios");
+    expect(app.commands.dev).toContain("xcodebuild");
+  });
+
+  it("resolves an explicit { run: xcode } spec against the xcode block", async () => {
+    const root = await tmp();
+    await mkdir(path.join(root, "Awooga.xcodeproj"));
+    const manifest = ProjectManifest.parse({
+      name: "awooga",
+      adapter: "xcode",
+      xcode: { project: "Awooga.xcodeproj", scheme: "Awooga" },
+      commands: { build: { run: "xcode" } },
+    });
+    const app = (await resolvePackages(root, manifest)).find((p) => p.name === "awooga")!;
+    expect(app.commands.build).toBe(
+      'xcodebuild -project Awooga.xcodeproj -scheme Awooga -destination "$PREMO_XCODE_DEST" build',
+    );
   });
 });

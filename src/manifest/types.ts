@@ -43,6 +43,21 @@ export const XcodeConfig = z.object({
 });
 export type XcodeConfig = z.infer<typeof XcodeConfig>;
 
+// A predefined, premo-owned script. The `run` tag selects a runner (see
+// core/runners) that generates the real command live from the unit's declarative
+// facts (e.g. the sibling `xcode` block) — so a multi-step build/run recipe lives
+// in premo and stays upgradeable, instead of being baked into every premo.json.
+// xcode is the first; more (compose, make, …) slot in by extending the enum.
+export const ScriptSpec = z.object({ run: z.enum(["xcode"]) });
+export type ScriptSpec = z.infer<typeof ScriptSpec>;
+
+// How a verb runs: a raw shell string (the escape hatch — run via the shell) or
+// a ScriptSpec premo executes through its runner. `premo adopt` writes a bare
+// `xcode` block and lets the runner *imply* dev/build/test, so the recipe never
+// lands in config; a literal string (or explicit spec) still overrides per verb.
+export const Script = z.union([z.string(), ScriptSpec]);
+export type Script = z.infer<typeof Script>;
+
 // A package is a code sub-unit of a repo — the unit of build/test/lint (DESIGN
 // §13). `dirs` are the path prefixes it owns; `affects` are other packages a
 // change here also marks affected (fan-out); `affectsExcept` are path-prefix
@@ -53,7 +68,7 @@ export const PackageConfig = z.object({
   dirs: z.array(z.string()).default([]),
   affects: z.array(z.string()).default([]),
   affectsExcept: z.array(z.string()).default([]),
-  commands: z.record(z.string()).default({}),
+  commands: z.record(Script).default({}),
   xcode: XcodeConfig.optional(),
 });
 export type PackageConfig = z.infer<typeof PackageConfig>;
@@ -103,7 +118,7 @@ export const ProjectManifest = z.object({
   openUrl: z.string().optional(),
   // Named interactive shells (e.g. `db` → psql).
   shells: z.record(ShellSpec).default({}),
-  commands: z.record(z.string()).default({}),
+  commands: z.record(Script).default({}),
   // The build/test/lint unit (DESIGN §13). Array of named packages; mostly
   // auto-detected and written materialized by `premo adopt`.
   packages: z.array(PackageConfig).default([]),

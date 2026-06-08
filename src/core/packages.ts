@@ -1,8 +1,13 @@
-import type { ProjectManifest, Verb, XcodeConfig } from "../manifest/types.js";
+import type { ProjectManifest, Script, Verb, XcodeConfig } from "../manifest/types.js";
 import { VERBS } from "../manifest/types.js";
 import { type Adapter, detectAdapter, getAdapter } from "./adapters/index.js";
-import { xcodeCommands } from "./xcode.js";
-import { shq } from "./shell.js";
+import { resolveScript } from "./runners/index.js";
+
+// Verbs the xcode runner owns. For a unit carrying an `xcode` block, these
+// default to an implied `{ run: "xcode" }` spec when no command is configured —
+// so the recipe is generated live by the runner, never baked into premo.json.
+const XCODE_VERBS = new Set<Verb>(["dev", "build", "test"]);
+const XCODE_SPEC: Script = { run: "xcode" };
 
 // A fully-resolved package: where to run, what it owns (for affected detection),
 // and the concrete command for each verb (config > adapter). The build/test/lint
@@ -20,11 +25,6 @@ export interface Package {
   // Present when this package is a native Apple app — drives destination
   // resolution for dev/build/test (DESIGN §13.2).
   xcode?: XcodeConfig;
-}
-
-// The `-workspace X` / `-project X` flag for an xcode package's baked config.
-function xcodeFlag(x: XcodeConfig): string {
-  return x.workspace ? `-workspace ${shq(x.workspace)}` : `-project ${shq(x.project ?? "")}`;
 }
 
 async function adapterFor(root: string, manifest: ProjectManifest): Promise<Adapter | null> {
@@ -51,23 +51,27 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
     const dirs = cfg?.dirs.length ? cfg.dirs : (det?.dirs ?? ["."]);
     const cwd = det?.cwd ?? root;
 
+    // The xcode block governing this package: a monorepo member's own block, or —
+    // for a single-app repo — the top-level one. Drives the implied xcode runner.
+    const xcode = cfg?.xcode ?? manifest.xcode;
+
     const commands: Partial<Record<Verb, string>> = {};
     for (const verb of VERBS) {
-      const cmd =
+      // Resolution order (DESIGN §3): per-package config > project config >
+      // implied xcode runner (dev/build/test of a native app) > adapter live
+      // command. A Script may be a raw string or a predefined spec; resolveScript
+      // turns a spec into its command via the runner registry.
+      const explicit: Script | undefined =
         cfg?.commands[verb] ??
         manifest.commands[verb] ??
-        (det && adapter ? ((await adapter.command(verb, det, root)) ?? undefined) : undefined);
+        (xcode && XCODE_VERBS.has(verb) ? XCODE_SPEC : undefined);
+      const cmd =
+        explicit !== undefined
+          ? resolveScript(explicit, verb, { xcode })
+          : det && adapter
+            ? ((await adapter.command(verb, det, root)) ?? undefined)
+            : undefined;
       if (cmd) commands[verb] = cmd;
-    }
-
-    // A baked per-package xcode block drives build/test/dev from the pinned
-    // scheme + project (relative to the package dir), unless a config command
-    // override already set them.
-    if (cfg?.xcode) {
-      const xc = xcodeCommands(xcodeFlag(cfg.xcode), cfg.xcode.scheme);
-      commands.build = cfg.commands.build ?? xc.build;
-      commands.test = cfg.commands.test ?? xc.test;
-      commands.dev = cfg.commands.dev ?? xc.dev;
     }
 
     packages.push({
@@ -87,7 +91,9 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
   if (packages.length === 0) {
     const commands: Partial<Record<Verb, string>> = {};
     for (const verb of VERBS) {
-      if (manifest.commands[verb]) commands[verb] = manifest.commands[verb];
+      const s = manifest.commands[verb];
+      const cmd = s !== undefined ? resolveScript(s, verb, {}) : undefined;
+      if (cmd) commands[verb] = cmd;
     }
     packages.push({
       name: manifest.name,

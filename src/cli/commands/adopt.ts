@@ -9,16 +9,21 @@ export function register(program: Command): void {
     .command("adopt")
     .description("Detect this project's stack and write a premo.json.")
     .option("--json", "emit machine-readable JSON")
-    .action(async (opts: { json?: boolean }) => {
+    .option("-f, --force", "re-adopt from scratch, overwriting an existing premo.json")
+    .action(async (opts: { json?: boolean; force?: boolean }) => {
       const cwd = process.cwd();
       const existing = findProjectRoot(cwd);
-      if (existing) {
+      if (existing && !opts.force) {
         if (opts.json) log.json({ adopted: false, reason: "already-adopted", root: existing });
         else
-          log.warn(`${PROJECT_FILE} already exists — edit it directly, or delete it to re-adopt.`);
+          log.warn(
+            `${PROJECT_FILE} already exists — re-adopt with --force (overwrites it), or edit it directly.`,
+          );
         return;
       }
-      const root = (await gitRoot(cwd)) ?? cwd;
+      // --force re-adopts in place at the existing project root, discarding manual
+      // edits; a fresh adopt anchors at the git root (or cwd).
+      const root = existing ?? (await gitRoot(cwd)) ?? cwd;
       const manifest = await adoptProject(root, { quiet: opts.json });
       if (opts.json) {
         log.json({

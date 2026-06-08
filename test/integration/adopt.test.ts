@@ -18,6 +18,19 @@ describe("adopt (integration)", () => {
     expect(new Set(out.packages)).toEqual(new Set(["a", "b"]));
   });
 
+  it("refuses a second adopt unless --force re-adopts in place", async () => {
+    const dir = await makeNodeApp();
+    expect((await runPremo(["adopt", "--json"], { cwd: dir })).exitCode).toBe(0);
+
+    const again = JSON.parse((await runPremo(["adopt", "--json"], { cwd: dir })).stdout);
+    expect(again).toMatchObject({ adopted: false, reason: "already-adopted" });
+
+    const forced = JSON.parse(
+      (await runPremo(["adopt", "--force", "--json"], { cwd: dir })).stdout,
+    );
+    expect(forced.adopted).toBe(true);
+  });
+
   it("detects a CLI package and bakes dev + deploy, no port", async () => {
     const dir = await makeCli();
     const out = JSON.parse((await runPremo(["adopt", "--json"], { cwd: dir })).stdout);

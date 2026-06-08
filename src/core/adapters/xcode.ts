@@ -69,12 +69,12 @@ export const xcodeAdapter: Adapter = {
     const { bundleId, platforms } = await buildSettings(root, proj, scheme);
     const defaultDestination = await pickDefaultDestination(platforms);
 
-    const cmds = xcodeCommands(projectFlag(proj), scheme);
-    const commands: Record<string, string> = {
-      dev: cmds.dev,
-      build: cmds.build,
-      test: cmds.test,
-    };
+    // dev/build/test are no longer baked: the `xcode` block below drives them
+    // live through the xcode runner (core/runners) at resolve time, so the recipe
+    // stays in premo (upgradeable, no bash-in-JSON) instead of frozen in every
+    // repo's config. Only a swiftlint `lint` — a genuinely editable string — is
+    // materialized.
+    const commands: Record<string, string> = {};
     if (existsSync(path.join(root, ".swiftlint.yml"))) commands.lint = "swiftlint";
 
     return {
@@ -84,7 +84,7 @@ export const xcodeAdapter: Adapter = {
         ...(bundleId ? { bundleId } : {}),
         ...(defaultDestination ? { defaultDestination } : {}),
       },
-      commands,
+      ...(Object.keys(commands).length ? { commands } : {}),
     };
   },
 };
