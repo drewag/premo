@@ -83,7 +83,7 @@ interface ProjectReport {
   ports: { base: number; block: number } | null;
   background: { name: string; pid: number }[];
   packages: { name: string; commands: Record<Verb, string | null> }[];
-  targets: { name: string; dev: boolean; deploy: boolean; default: boolean }[];
+  targets: { name: string; dev: boolean; deploy: boolean; default: boolean; port: number | null }[];
   unwired: Verb[];
 }
 
@@ -111,6 +111,7 @@ async function gatherProject(cwd: string): Promise<ProjectReport> {
     dev: t.dev.length > 0,
     deploy: !!t.deploy,
     default: t.isDefault,
+    port: t.ports?.base ?? null,
   }));
 
   // A verb is wired if its axis resolves it: build/test/lint from a package,
@@ -229,12 +230,21 @@ function printTargets(targets: ProjectReport["targets"]): void {
     return;
   }
   const nameW = Math.max(6, ...targets.map((t) => t.name.length));
-  const header = "  " + "target".padEnd(nameW) + "   dev  deploy";
+  const header = "  " + "target".padEnd(nameW) + "   dev  deploy  port";
   log.info(pc.dim(header));
   for (const t of targets) {
     const flag = t.default ? pc.cyan(" (default)") : "";
+    const port = pc.dim(t.port ? String(t.port) : "·");
     log.info(
-      "  " + t.name.padEnd(nameW) + "   " + cell(t.dev, 3) + "  " + cell(t.deploy, 6) + flag,
+      "  " +
+        t.name.padEnd(nameW) +
+        "   " +
+        cell(t.dev, 3) +
+        "  " +
+        cell(t.deploy, 6) +
+        "  " +
+        port +
+        flag,
     );
   }
 }

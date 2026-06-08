@@ -2,8 +2,30 @@ import { describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { resolveTargets, defaultTarget, toTargetConfig } from "../../src/core/targets.js";
+import {
+  resolveTargets,
+  defaultTarget,
+  toTargetConfig,
+  servesHttp,
+  portsNeeded,
+  assignTargetPorts,
+  PORT_STEP,
+  type Target,
+} from "../../src/core/targets.js";
 import { ProjectManifest, type ProjectManifestInput } from "../../src/manifest/types.js";
+
+// A minimal Target literal for the pure port helpers.
+function tgt(name: string, over: Partial<Target> = {}): Target {
+  return {
+    name,
+    packages: [name],
+    dev: [{ label: name, command: "vite", cwd: ".", kind: "service" }],
+    deploy: null,
+    deployCwd: ".",
+    isDefault: false,
+    ...over,
+  };
+}
 
 async function tmp(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "premo-targets2-"));
@@ -134,6 +156,15 @@ describe("defaultTarget / toTargetConfig", () => {
     expect(defaultTarget(two)).toBeNull();
   });
 
+  it("persists per-target ports", async () => {
+    const t = tgt("frontend", { ports: { base: 3000 } });
+    expect(toTargetConfig(t)).toEqual({
+      name: "frontend",
+      packages: ["frontend"],
+      ports: { base: 3000 },
+    });
+  });
+
   it("persists only non-derived fields (dev is never stored)", async () => {
     const root = await tmp();
     const t = (
@@ -157,5 +188,53 @@ describe("defaultTarget / toTargetConfig", () => {
       deploy: "yarn deploy:frontend",
       default: true,
     });
+  });
+});
+
+describe("per-target port allocation (DESIGN §13.4)", () => {
+  const compose = tgt("stack", {
+    dev: [
+      {
+        label: "stack",
+        command: "docker compose -f docker-compose.yml up",
+        cwd: ".",
+        kind: "service",
+      },
+    ],
+  });
+  const cli = tgt("tool", {
+    dev: [{ label: "tool", command: "node cli.js", cwd: ".", kind: "command" }],
+  });
+
+  it("servesHttp: a non-compose service serves; compose, CLI, and xcode don't", () => {
+    expect(servesHttp(tgt("web"), new Set())).toBe(true);
+    expect(servesHttp(compose, new Set())).toBe(false);
+    expect(servesHttp(cli, new Set())).toBe(false);
+    expect(servesHttp(tgt("ios"), new Set(["ios"]))).toBe(false); // member is a native app
+    expect(servesHttp(tgt("dead", { dev: [] }), new Set())).toBe(false); // nothing to run
+  });
+
+  it("portsNeeded counts only serving targets, spaced by PORT_STEP", () => {
+    const targets = [tgt("a"), tgt("b"), compose, cli, tgt("c")];
+    expect(portsNeeded(targets, new Set())).toBe(3 * PORT_STEP);
+  });
+
+  it("assignTargetPorts gives each serving target a distinct base, skipping the rest", () => {
+    const a = tgt("a");
+    const b = tgt("b");
+    const targets = [a, compose, b, cli];
+    assignTargetPorts(targets, 41700, new Set());
+    expect(a.ports).toEqual({ base: 41700 });
+    expect(b.ports).toEqual({ base: 41700 + PORT_STEP });
+    expect(compose.ports).toBeUndefined();
+    expect(cli.ports).toBeUndefined();
+  });
+
+  it("excludes xcode members from port assignment", () => {
+    const web = tgt("web");
+    const ios = tgt("ios");
+    assignTargetPorts([web, ios], 41700, new Set(["ios"]));
+    expect(web.ports).toEqual({ base: 41700 });
+    expect(ios.ports).toBeUndefined();
   });
 });

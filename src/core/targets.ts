@@ -1,4 +1,4 @@
-import type { ProjectManifest, PortBlock, TargetConfig } from "../manifest/types.js";
+import type { ProjectManifest, ProjectManifestInput } from "../manifest/types.js";
 import { resolvePackages, type Package } from "./packages.js";
 import { detectPackageManager, readPackageJson } from "./adapters/node-shared.js";
 
@@ -19,9 +19,12 @@ export interface Target {
   dev: DevProc[];
   deploy: string | null;
   deployCwd: string;
-  ports?: PortBlock;
+  ports?: { base: number; block?: number };
   isDefault: boolean;
 }
+
+// Spacing between adjacent serving targets' base ports within the project block.
+export const PORT_STEP = 10;
 
 function composeUp(file: string): string {
   return `docker compose -f ${file} up`;
@@ -106,10 +109,39 @@ export function defaultTarget(targets: Target[]): Target | null {
   return targets.find((t) => t.isDefault) ?? (targets.length === 1 ? targets[0]! : null);
 }
 
+// Whether a target binds an HTTP port in dev (and so earns its own port): a
+// non-compose service whose members aren't native (xcode) apps. A compose target
+// owns its ports via the compose file; xcode/CLI targets don't serve.
+export function servesHttp(t: Target, xcodePackages: Set<string>): boolean {
+  if (t.packages.some((n) => xcodePackages.has(n))) return false;
+  return t.dev.some((d) => d.kind === "service" && !d.command.startsWith("docker compose"));
+}
+
+// Port range (in ports) the serving targets need — callers size the project
+// block to fit before assigning.
+export function portsNeeded(targets: Target[], xcodePackages: Set<string>): number {
+  return targets.filter((t) => servesHttp(t, xcodePackages)).length * PORT_STEP;
+}
+
+// Give each serving target a distinct base port within the project block, so
+// concurrent `premo dev` servers don't collide (DESIGN §13.4). Mutates in place.
+export function assignTargetPorts(
+  targets: Target[],
+  base: number,
+  xcodePackages: Set<string>,
+): void {
+  let offset = 0;
+  for (const t of targets) {
+    if (!servesHttp(t, xcodePackages)) continue;
+    t.ports = { base: base + offset };
+    offset += PORT_STEP;
+  }
+}
+
 // The serializable form `premo adopt` materializes into premo.json. dev is
 // derived (from compose/command/packages) so it's never stored; we persist only
 // what isn't recomputed: membership, a resolved deploy command, ports, default.
-export function toTargetConfig(t: Target): TargetConfig {
+export function toTargetConfig(t: Target): NonNullable<ProjectManifestInput["targets"]>[number] {
   return {
     name: t.name,
     packages: t.packages,

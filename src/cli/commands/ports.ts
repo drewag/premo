@@ -16,12 +16,16 @@ export function register(program: Command): void {
         return;
       }
       const manifest = await loadProject(root);
+      const targetPorts = manifest.targets
+        .filter((t) => t.ports)
+        .map((t) => ({ name: t.name, port: t.ports!.base }));
       if (opts.json) {
         log.json({
           name: manifest.name,
           ports: manifest.ports
             ? { base: manifest.ports.base, block: manifest.ports.block, port: manifest.ports.base }
             : null,
+          targets: targetPorts,
         });
         return;
       }
@@ -30,6 +34,10 @@ export function register(program: Command): void {
         return;
       }
       log.info(`${manifest.name}  (base ${manifest.ports.base}, block ${manifest.ports.block})`);
-      log.dim(`  PORT=${manifest.ports.base}`);
+      if (targetPorts.length > 0) {
+        for (const t of targetPorts) log.dim(`  ${t.name}  PORT=${t.port}`);
+      } else {
+        log.dim(`  PORT=${manifest.ports.base}`);
+      }
     });
 }

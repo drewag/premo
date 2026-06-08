@@ -9,10 +9,11 @@ import {
 } from "./project.js";
 import { detectAdapter } from "./adapters/index.js";
 import { readPackageJson } from "./adapters/node-shared.js";
-import { resolveTargets, toTargetConfig } from "./targets.js";
+import { resolveTargets, toTargetConfig, assignTargetPorts, portsNeeded } from "./targets.js";
 import { ensurePremoGitignore } from "./local.js";
 import { gitRoot } from "./git.js";
 import { allocatePortBlock } from "./port-registry.js";
+import { DEFAULT_BLOCK } from "./ports.js";
 import { log } from "./logger.js";
 
 export interface Context {
@@ -101,27 +102,24 @@ export async function adoptProject(
     ...baked,
   };
 
-  let portInfo = "";
-  // A dev command that binds an HTTP port earns a port block. Native apps (xcode)
-  // and command-style CLIs run a process but don't serve, so they skip allocation.
-  let serves = false;
-  if (adapter && adapter.name !== "xcode") {
-    for (const p of detected) {
-      if ((p.kind ?? "service") === "service" && (await adapter.command("dev", p, root)) !== null) {
-        serves = true;
-        break;
-      }
-    }
-  }
-  if (serves) {
-    const alloc = await allocatePortBlock(root, name);
-    draft.ports = { base: alloc.base, block: alloc.block };
-    portInfo = `, ports ${alloc.base}–${alloc.base + alloc.block - 1}`;
-  }
-
   // Seed run/deploy targets 1:1 from the resolved packages (DESIGN §13.3) and
   // materialize them; composite targets (e.g. a compose stack) are added by hand.
   const seeded = await resolveTargets(root, ProjectManifest.parse(draft));
+
+  // Each serving target earns its own base port within the project block, so
+  // concurrent `premo dev` servers don't collide. Native apps (xcode) and
+  // compose/CLI targets don't serve, so they skip allocation. (DESIGN §13.4.)
+  let portInfo = "";
+  const xcodeNames = new Set((draft.packages ?? []).filter((p) => p.xcode).map((p) => p.name!));
+  const need = portsNeeded(seeded, xcodeNames);
+  if (need > 0) {
+    const blockSize = Math.max(DEFAULT_BLOCK, Math.ceil(need / DEFAULT_BLOCK) * DEFAULT_BLOCK);
+    const alloc = await allocatePortBlock(root, name, blockSize);
+    draft.ports = { base: alloc.base, block: alloc.block };
+    assignTargetPorts(seeded, alloc.base, xcodeNames);
+    portInfo = `, ports ${alloc.base}–${alloc.base + alloc.block - 1}`;
+  }
+
   if (seeded.length > 0) draft.targets = seeded.map(toTargetConfig);
 
   const manifest = ProjectManifest.parse(draft); // validate
