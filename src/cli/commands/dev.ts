@@ -5,6 +5,7 @@ import readline from "node:readline";
 import pc from "picocolors";
 import { ensureContext, type Context } from "../../core/context.js";
 import { resolveTargets, defaultTarget, type DevProc } from "../../core/targets.js";
+import { envFileVars } from "../../core/env.js";
 import { spawnDetached } from "../../core/supervise.js";
 import { shq } from "../../core/shell.js";
 import { installFooter, type Footer } from "../../core/footer.js";
@@ -108,7 +109,8 @@ async function runAdoptedDev(
     return;
   }
 
-  const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
+  const fileVars = await envFileVars(ctx.root, ctx.manifest.envFile ?? undefined);
+  const env: NodeJS.ProcessEnv = { ...process.env, ...fileVars, ...extraEnv };
   const portBase = target.ports?.base ?? ctx.manifest.ports?.base;
 
   // Each process binds its OWN port (a composite target runs several dev servers

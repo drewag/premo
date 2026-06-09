@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { runPremo, makeNodeApp, makeWorkspaces, dirtyEdit } from "./helpers.js";
+import {
+  runPremo,
+  makeNodeApp,
+  makeWorkspaces,
+  makeNodeAppWithDotenv,
+  dirtyEdit,
+} from "./helpers.js";
 
 describe("verbs (integration)", () => {
   it("runs build and surfaces the script's output", async () => {
@@ -27,6 +33,13 @@ describe("verbs (integration)", () => {
     const r = await runPremo(["build", "nope"], { cwd: dir });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("No package");
+  });
+
+  it("loads the repo .env into verb runs (auto-detected envFile)", async () => {
+    const dir = await makeNodeAppWithDotenv();
+    const r = await runPremo(["build"], { cwd: dir });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("VAL=from_dotenv");
   });
 
   it("builds only the affected target in a monorepo", async () => {

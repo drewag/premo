@@ -69,4 +69,17 @@ describe("adoptProject — manual monorepo", () => {
     expect(Array.isArray(written.packages)).toBe(true);
     expect(Array.isArray(written.targets)).toBe(true);
   });
+
+  it("auto-detects a root .env as the envFile", async () => {
+    const root = await fixture();
+    await writeFile(path.join(root, ".env"), "DATABASE_URL=postgres://x\n");
+    const m = await adoptProject(root, { quiet: true });
+    expect(m.envFile).toBe(".env");
+  });
+
+  it("leaves envFile unset when there's no .env", async () => {
+    const root = await fixture();
+    const m = await adoptProject(root, { quiet: true });
+    expect(m.envFile ?? null).toBeNull();
+  });
 });

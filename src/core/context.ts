@@ -1,4 +1,5 @@
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { ProjectManifest, type ProjectManifestInput } from "../manifest/types.js";
 import {
   PROJECT_FILE,
@@ -98,6 +99,9 @@ export async function adoptProject(
     name,
     version: "0",
     ...(adapter ? { adapter: adapter.name } : {}),
+    // A repo `.env` is loaded into verb-run env so host processes see the same
+    // config docker compose already auto-loads. Detected here; editable/disable-able.
+    ...(existsSync(path.join(root, ".env")) ? { envFile: ".env" } : {}),
     packages,
     ...baked,
   };

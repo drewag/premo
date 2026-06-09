@@ -108,6 +108,19 @@ export async function makeManualMonorepo(): Promise<string> {
   return dir;
 }
 
+// A single-package node app whose build echoes a variable from a root `.env`,
+// to prove premo loads the repo env into verb runs.
+export async function makeNodeAppWithDotenv(): Promise<string> {
+  const dir = await tmp("env");
+  await writeJson(path.join(dir, "package.json"), {
+    name: "app",
+    scripts: { build: "echo VAL=$FROM_DOTENV" },
+  });
+  await writeFile(path.join(dir, ".env"), "FROM_DOTENV=from_dotenv\n");
+  await gitInit(dir);
+  return dir;
+}
+
 // A CLI-style package (has a `bin`).
 export async function makeCli(): Promise<string> {
   const dir = await tmp("cli");

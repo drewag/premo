@@ -4,6 +4,7 @@ import type { Context } from "./context.js";
 import { resolvePackages, type Package } from "./packages.js";
 import { changedFiles } from "./git.js";
 import { affectedPackages } from "./affected.js";
+import { envFileVars } from "./env.js";
 import { log } from "./logger.js";
 
 export interface VerbOptions {
@@ -76,6 +77,9 @@ export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Prom
   const { packages, note } = selection;
   if (note) log.dim(`  ${note}`);
 
+  // Repo `.env` (gap-fill) so build/test/lint see the same config as dev + compose.
+  const fileVars = await envFileVars(ctx.root, ctx.manifest.envFile ?? undefined);
+
   const runnable = packages.filter((p) => p.commands[verb]);
   if (runnable.length === 0) {
     const where = packages.length === 0 ? "this project" : "the selected package(s)";
@@ -100,7 +104,7 @@ export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Prom
       shell: true,
       stdio: "inherit",
       reject: false,
-      env: opts.env,
+      env: { ...fileVars, ...opts.env },
     });
     if (res.exitCode !== 0) {
       log.error(`${verb} ${p.name} failed (exit ${res.exitCode}).`);

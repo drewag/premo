@@ -116,6 +116,11 @@ export const ProjectManifest = z.object({
   ports: PortBlock.optional(),
   // URL `premo open` launches; ${PORT} is the allocated base.
   openUrl: z.string().optional(),
+  // A dotenv file premo loads into the env for verb runs (dev/build/test/…), so
+  // host processes see the same config the repo's `.env` provides. Auto-detected
+  // as ".env" on adopt; set to another path, or null to disable. Real env vars
+  // and premo's own injections (e.g. $PORT) take precedence.
+  envFile: z.string().nullable().optional(),
   // Named interactive shells (e.g. `db` → psql).
   shells: z.record(ShellSpec).default({}),
   commands: z.record(Script).default({}),

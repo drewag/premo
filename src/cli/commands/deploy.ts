@@ -4,6 +4,7 @@ import pc from "picocolors";
 import { ensureContext } from "../../core/context.js";
 import { resolveTargets, type Target } from "../../core/targets.js";
 import { resolvePackages } from "../../core/packages.js";
+import { envFileVars } from "../../core/env.js";
 import { multiSelectFromList } from "../../core/select.js";
 import { nextVersion } from "../../core/version.js";
 import { resolveDeployedRef, type DeployedRef } from "../../core/deploy.js";
@@ -47,6 +48,7 @@ export function register(program: Command): void {
         opts: { force?: boolean; yes?: boolean; env?: string },
       ) => {
         const ctx = await ensureContext(process.cwd());
+        const fileVars = await envFileVars(ctx.root, ctx.manifest.envFile ?? undefined);
         const targets = await resolveTargets(ctx.root, ctx.manifest);
         const packages = await resolvePackages(ctx.root, ctx.manifest);
         const dirsByName = new Map(packages.map((p) => [p.name, p.dirs]));
@@ -177,6 +179,7 @@ export function register(program: Command): void {
             reject: false,
             env: {
               ...process.env,
+              ...fileVars,
               PREMO_DEPLOY_VERSION: version,
               PREMO_DEPLOY_TARGET: p.target.name,
               PREMO_DEPLOY_ENV: env,
