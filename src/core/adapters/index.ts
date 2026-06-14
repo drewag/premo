@@ -1,4 +1,4 @@
-import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
+import type { ProjectManifestInput, Verb, XcodeConfig } from "../../manifest/types.js";
 import { workspacesAdapter } from "./workspaces.js";
 import { monorepoAdapter } from "./monorepo.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
@@ -15,6 +15,11 @@ export interface DetectedPackage {
   // "command" (run-once/interactive tool: inherited-TTY dev, no port). Default
   // service when omitted.
   kind?: "service" | "command";
+  // A best-effort xcode block for a native Apple package, even before `adopt`
+  // bakes the richer (bundleId + defaultDestination) one into premo.json. Just
+  // the project/workspace path + a guessed scheme — enough for destination
+  // resolution to engage so `dev`/`build`/`test` work on a freshly-detected app.
+  xcode?: XcodeConfig;
 }
 
 export interface Adapter {

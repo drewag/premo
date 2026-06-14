@@ -64,6 +64,18 @@ describe("monorepo adapter (manual, recursive depth-1)", () => {
     expect(await monorepoAdapter.command("build", ios, root)).toContain("xcodebuild");
   });
 
+  it("carries up a native member's best-effort xcode block (path relative to the member)", async () => {
+    const root = await tmp();
+    await pkg(root, { name: "mono", bin: "./x" });
+    await pkg(path.join(root, "api"), { name: "api", scripts: { build: "tsc" } });
+    await mkdir(path.join(root, "ios", "App.xcodeproj"), { recursive: true });
+
+    const ios = (await monorepoAdapter.packages(root)).find((p) => p.name === "ios")!;
+    // Detected even before `adopt` bakes a richer block — project path stays
+    // relative to the member dir (= the package cwd), scheme guessed as the basename.
+    expect(ios.xcode).toEqual({ project: "App.xcodeproj", scheme: "App" });
+  });
+
   it("needs ≥2 members — a single sub-project is not a monorepo", async () => {
     const root = await tmp();
     await pkg(root, { name: "mono", bin: "./x" }); // root has a bin

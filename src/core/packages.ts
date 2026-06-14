@@ -51,9 +51,11 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
     const dirs = cfg?.dirs.length ? cfg.dirs : (det?.dirs ?? ["."]);
     const cwd = det?.cwd ?? root;
 
-    // The xcode block governing this package: a monorepo member's own block, or —
-    // for a single-app repo — the top-level one. Drives the implied xcode runner.
-    const xcode = cfg?.xcode ?? manifest.xcode;
+    // The xcode block governing this package, in precedence order: an explicit
+    // per-package block in premo.json, the adapter's best-effort detection (a
+    // native app not yet adopted), then a single-app repo's top-level block.
+    // Drives the implied xcode runner *and* destination resolution downstream.
+    const xcode = cfg?.xcode ?? det?.xcode ?? manifest.xcode;
 
     const commands: Partial<Record<Verb, string>> = {};
     for (const verb of VERBS) {
@@ -82,7 +84,9 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
       cwd,
       commands,
       kind: det?.kind ?? "service",
-      ...(cfg?.xcode ? { xcode: cfg.xcode } : {}),
+      // Surface the resolved xcode block so destination resolution (findXcodeConfig)
+      // finds it — including a detected-but-not-yet-adopted native app.
+      ...(xcode ? { xcode } : {}),
     });
   }
 

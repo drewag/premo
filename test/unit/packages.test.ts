@@ -75,6 +75,26 @@ describe("resolvePackages", () => {
     expect(ios.commands.dev).toContain("PREMO_XCODE_BUNDLE_ID");
   });
 
+  it("surfaces a detected xcode member's block even without a premo.json xcode entry", async () => {
+    // A native app added to a monorepo *after* adopt: premo.json names no xcode
+    // block, but detection must still surface one so destination resolution
+    // engages (else `dev`/`build` ship an empty -destination to xcodebuild).
+    const root = await tmp();
+    await pkg(path.join(root, "web"), { name: "web", scripts: { build: "vite build" } });
+    await mkdir(path.join(root, "ios", "Finances.xcodeproj"), { recursive: true });
+    const manifest = ProjectManifest.parse({ name: "mono", adapter: "monorepo" });
+
+    const ios = (await resolvePackages(root, manifest)).find((p) => p.name === "ios")!;
+    // The block is present (so findXcodeConfig can resolve a destination)...
+    expect(ios.xcode).toEqual({ project: "Finances.xcodeproj", scheme: "Finances" });
+    // ...and drives the implied runner — commands run from the member dir, so the
+    // project path is the member-relative basename.
+    expect(ios.commands.build).toBe(
+      'xcodebuild -project Finances.xcodeproj -scheme Finances -destination "$PREMO_XCODE_DEST" build',
+    );
+    expect(ios.commands.dev).toContain("xcodebuild");
+  });
+
   it("implies the xcode runner from a single-app top-level xcode block", async () => {
     const root = await tmp();
     await mkdir(path.join(root, "Awooga.xcodeproj")); // the xcode adapter detects the app

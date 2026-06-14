@@ -76,6 +76,10 @@ export const monorepoAdapter: Adapter = {
         cwd: dir,
         scripts: childPkg.scripts,
         kind: childPkg.kind,
+        // Carry up a native member's best-effort xcode block. Its project path
+        // stays relative to the member dir (= this package's cwd), so the xcode
+        // runner's `-project`/`-workspace` resolves from the dir the verb runs in.
+        ...(childPkg.xcode ? { xcode: childPkg.xcode } : {}),
       };
       delegates.set(pkg, { adapter, pkg: childPkg });
       result.push(pkg);

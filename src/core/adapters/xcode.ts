@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
+import type { ProjectManifestInput, Verb, XcodeConfig } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
 import { log } from "../logger.js";
 import {
@@ -27,7 +27,17 @@ export const xcodeAdapter: Adapter = {
   async packages(root: string): Promise<DetectedPackage[]> {
     const proj = await findXcodeProject(root);
     if (!proj) return [];
-    return [{ name: sanitizeProjectName(proj.name), dirs: ["."], cwd: root, scripts: {} }];
+    // A best-effort xcode block so destination resolution engages even before
+    // `adopt` bakes the richer one: project/workspace path (relative to this
+    // unit) + the scheme guessed as the project basename — the same guess the
+    // live `command()` makes. bundleId/defaultDestination stay unset; `dev`
+    // resolves the bundle id from build settings and prompts (or takes --device)
+    // for a destination. `adopt` later fills both in for non-interactive runs.
+    const xcode: XcodeConfig =
+      proj.kind === "workspace"
+        ? { workspace: proj.path, scheme: proj.name }
+        : { project: proj.path, scheme: proj.name };
+    return [{ name: sanitizeProjectName(proj.name), dirs: ["."], cwd: root, scripts: {}, xcode }];
   },
 
   // Best-effort live commands (used for the `doctor` preview before adopt bakes

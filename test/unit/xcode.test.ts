@@ -125,12 +125,20 @@ describe("xcodeCommands / adapter.command", () => {
     expect(cmds.dev).not.toContain("find ");
     // Build verbosity is controlled by the injected $PREMO_XCODE_QUIET.
     expect(cmds.dev).toContain("$PREMO_XCODE_QUIET build");
+    // Bundle id for launch falls back to the build settings' PRODUCT_BUNDLE_IDENTIFIER
+    // when no baked PREMO_XCODE_BUNDLE_ID is present (a not-yet-adopted app).
+    expect(cmds.dev).toContain('BID="${PREMO_XCODE_BUNDLE_ID:-');
+    expect(cmds.dev).toContain("PRODUCT_BUNDLE_IDENTIFIER");
+    expect(cmds.dev).toContain('simctl launch --console-pty "$PREMO_XCODE_BOOT_UDID" "$BID"');
   });
 
   it("only offers lint when a .swiftlint.yml exists; never a deploy default", async () => {
     const root = await tmp();
     await mkdir(path.join(root, "Awooga.xcodeproj"));
     const [t] = await xcodeAdapter.packages(root);
+    // A detected app carries a best-effort xcode block (no adopt needed) so
+    // destination resolution can engage on first verb run.
+    expect(t!.xcode).toEqual({ project: "Awooga.xcodeproj", scheme: "Awooga" });
     expect(await xcodeAdapter.command("lint", t!, root)).toBeNull();
     expect(await xcodeAdapter.command("deploy", t!, root)).toBeNull();
     expect(await xcodeAdapter.command("build", t!, root)).toContain("xcodebuild");
