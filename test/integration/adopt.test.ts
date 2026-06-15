@@ -18,17 +18,18 @@ describe("adopt (integration)", () => {
     expect(new Set(out.packages)).toEqual(new Set(["a", "b"]));
   });
 
-  it("refuses a second adopt unless --force re-adopts in place", async () => {
+  it("a second adopt syncs in place (idempotent) rather than refusing", async () => {
     const dir = await makeNodeApp();
     expect((await runPremo(["adopt", "--json"], { cwd: dir })).exitCode).toBe(0);
 
+    // Re-adopt with no repo changes: an additive sync that finds nothing new.
     const again = JSON.parse((await runPremo(["adopt", "--json"], { cwd: dir })).stdout);
-    expect(again).toMatchObject({ adopted: false, reason: "already-adopted" });
+    expect(again).toMatchObject({ adopted: true, mode: "sync", changed: false });
 
     const forced = JSON.parse(
       (await runPremo(["adopt", "--force", "--json"], { cwd: dir })).stdout,
     );
-    expect(forced.adopted).toBe(true);
+    expect(forced).toMatchObject({ adopted: true, mode: "force" });
   });
 
   it("detects a CLI package and bakes dev + deploy, no port", async () => {

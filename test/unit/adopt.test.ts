@@ -2,7 +2,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { adoptProject } from "../../src/core/context.js";
+import { adoptProject, syncProject } from "../../src/core/context.js";
+import { loadProject } from "../../src/core/project.js";
+import type { ProjectManifestInput } from "../../src/manifest/types.js";
 
 // Isolate the host-global port registry so these never touch ~/.premo.
 beforeAll(async () => {
@@ -81,5 +83,83 @@ describe("adoptProject — manual monorepo", () => {
     const root = await fixture();
     const m = await adoptProject(root, { quiet: true });
     expect(m.envFile ?? null).toBeNull();
+  });
+});
+
+// Read the raw manifest object for hand-editing in tests (loadProject applies
+// defaults; here we want to mutate and write back the on-disk shape).
+async function readRaw(root: string): Promise<ProjectManifestInput> {
+  return JSON.parse(await readFile(path.join(root, "premo.json"), "utf8")) as ProjectManifestInput;
+}
+function basePortOf(m: { targets: { name: string; ports?: { base: number } }[] }, name: string) {
+  return m.targets.find((t) => t.name === name)?.ports?.base;
+}
+
+describe("syncProject — additive re-adopt", () => {
+  it("is a no-op when nothing in the repo changed", async () => {
+    const root = await fixture();
+    await adoptProject(root, { quiet: true });
+    const before = await readFile(path.join(root, "premo.json"), "utf8");
+
+    const r = await syncProject(root);
+    expect(r.changed).toBe(false);
+    // Byte-for-byte stable — a no-op sync must not churn the file.
+    expect(await readFile(path.join(root, "premo.json"), "utf8")).toBe(before);
+  });
+
+  it("picks up a newly-added package + target and gives it a free port", async () => {
+    const root = await fixture();
+    await adoptProject(root, { quiet: true });
+    const before = await loadProject(root);
+    const apiPort = basePortOf(before, "api");
+    const webPort = basePortOf(before, "web");
+
+    // A new serving member appears in the repo.
+    await pkg(path.join(root, "worker"), { name: "worker", scripts: { dev: "node worker.js" } });
+    const r = await syncProject(root);
+
+    expect(r.changed).toBe(true);
+    expect(r.changes.packages).toContain("worker");
+    expect(r.changes.targets).toContain("worker");
+
+    const after = await loadProject(root);
+    // Existing ports are left exactly as they were.
+    expect(basePortOf(after, "api")).toBe(apiPort);
+    expect(basePortOf(after, "web")).toBe(webPort);
+    // The newcomer gets its own distinct base within the block.
+    const workerPort = basePortOf(after, "worker");
+    expect(workerPort).toBeDefined();
+    expect(new Set([apiPort, webPort, workerPort]).size).toBe(3);
+  });
+
+  it("preserves a hand-edited command and target deploy", async () => {
+    const root = await fixture();
+    await adoptProject(root, { quiet: true });
+
+    const edited = await readRaw(root);
+    edited.commands = { ...(edited.commands ?? {}), lint: "my-special-linter" };
+    edited.targets!.find((t) => t.name === "api")!.deploy = "custom-ship";
+    await writeFile(path.join(root, "premo.json"), JSON.stringify(edited, null, 2));
+
+    await syncProject(root);
+
+    const after = await loadProject(root);
+    expect(after.commands.lint).toBe("my-special-linter");
+    expect(after.targets.find((t) => t.name === "api")!.deploy).toBe("custom-ship");
+  });
+
+  it("reports a package that's no longer detected as stale, without removing it", async () => {
+    const root = await fixture();
+    await adoptProject(root, { quiet: true });
+
+    // Add a phantom package to the manifest that the repo doesn't back.
+    const edited = await readRaw(root);
+    edited.packages!.push({ name: "ghost", dirs: ["ghost/"] });
+    await writeFile(path.join(root, "premo.json"), JSON.stringify(edited, null, 2));
+
+    const r = await syncProject(root);
+    expect(r.stale.packages).toContain("ghost");
+    const after = await loadProject(root);
+    expect(after.packages.map((p) => p.name)).toContain("ghost");
   });
 });

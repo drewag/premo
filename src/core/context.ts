@@ -5,16 +5,18 @@ import {
   PROJECT_FILE,
   findProjectRoot,
   loadProject,
+  readRawProject,
   saveProject,
   sanitizeProjectName,
 } from "./project.js";
 import { detectAdapter } from "./adapters/index.js";
 import { readPackageJson } from "./adapters/node-shared.js";
-import { resolveTargets, toTargetConfig, assignTargetPorts, portsNeeded } from "./targets.js";
+import { resolveTargets, toTargetConfig, servesHttp, PORT_STEP } from "./targets.js";
 import { ensurePremoGitignore } from "./local.js";
 import { gitRoot } from "./git.js";
 import { allocatePortBlock } from "./port-registry.js";
 import { DEFAULT_BLOCK } from "./ports.js";
+import { mergeAdopt, changesEmpty, type AdoptChanges, type AdoptStale } from "./adopt-merge.js";
 import { log } from "./logger.js";
 
 export interface Context {
@@ -67,12 +69,18 @@ export async function ensureContext(cwd: string): Promise<Context> {
   return { root, manifest };
 }
 
-// Detect the stack, allocate a conflict-free port block if anything serves,
-// and write premo.json. Idempotent enough to re-run via `premo adopt`.
-export async function adoptProject(
-  root: string,
-  { quiet = false }: { quiet?: boolean } = {},
-): Promise<ProjectManifest> {
+// The clean, un-defaulted draft a fresh adopt would write, plus the facts the
+// caller needs for messaging. Targets are seeded and materialized but carry no
+// ports yet — port reconciliation is a separate, mergeable pass (see below).
+interface DetectResult {
+  draft: ProjectManifestInput;
+  adapterName: string | null;
+  packageCount: number;
+}
+
+// Detect the stack and build the draft manifest, stopping short of port
+// allocation and disk I/O. Shared by fresh adopt and additive sync.
+async function detectDraft(root: string): Promise<DetectResult> {
   const adapter = await detectAdapter(root);
   const rootPkg = await readPackageJson(root);
   const name = sanitizeProjectName(rootPkg?.name ?? path.basename(root));
@@ -107,38 +115,109 @@ export async function adoptProject(
   };
 
   // Seed run/deploy targets 1:1 from the resolved packages (DESIGN §13.3) and
-  // materialize them; composite targets (e.g. a compose stack) are added by hand.
+  // materialize them (without ports); composite targets are added by hand.
   const seeded = await resolveTargets(root, ProjectManifest.parse(draft));
-
-  // Each serving target earns its own base port within the project block, so
-  // concurrent `premo dev` servers don't collide. Native apps (xcode) and
-  // compose/CLI targets don't serve, so they skip allocation. (DESIGN §13.4.)
-  let portInfo = "";
-  const xcodeNames = new Set((draft.packages ?? []).filter((p) => p.xcode).map((p) => p.name!));
-  const need = portsNeeded(seeded, xcodeNames);
-  if (need > 0) {
-    const blockSize = Math.max(DEFAULT_BLOCK, Math.ceil(need / DEFAULT_BLOCK) * DEFAULT_BLOCK);
-    const alloc = await allocatePortBlock(root, name, blockSize);
-    draft.ports = { base: alloc.base, block: alloc.block };
-    assignTargetPorts(seeded, alloc.base, xcodeNames);
-    portInfo = `, ports ${alloc.base}–${alloc.base + alloc.block - 1}`;
-  }
-
   if (seeded.length > 0) draft.targets = seeded.map(toTargetConfig);
+
+  return { draft, adapterName: adapter?.name ?? null, packageCount: detected.length };
+}
+
+// Each serving target earns its own base port within the project block, so
+// concurrent `premo dev` servers don't collide. Native apps (xcode) and
+// compose/CLI targets don't serve, so they skip allocation (DESIGN §13.4).
+// Mutates `draft` in place: ensures `draft.ports` and assigns a free offset to
+// every serving target that lacks one — existing assignments are left untouched,
+// which is what makes a re-adopt additive rather than a reshuffle. Returns the
+// project block (for messaging) and the names of targets newly given a port.
+async function reconcilePorts(
+  root: string,
+  draft: ProjectManifestInput,
+): Promise<{ block: { base: number; block: number } | null; assigned: string[] }> {
+  const xcodeNames = new Set((draft.packages ?? []).filter((p) => p.xcode).map((p) => p.name!));
+  const targets = await resolveTargets(root, ProjectManifest.parse(draft));
+  const serving = targets.filter((t) => servesHttp(t, xcodeNames));
+  if (serving.length === 0) return { block: null, assigned: [] };
+
+  // Reuse the existing block when there is one (the registry is idempotent and
+  // keyed by path); otherwise allocate one sized to fit every serving target.
+  const need = serving.length * PORT_STEP;
+  const blockSize = Math.max(DEFAULT_BLOCK, Math.ceil(need / DEFAULT_BLOCK) * DEFAULT_BLOCK);
+  const alloc = await allocatePortBlock(root, String(draft.name), blockSize);
+  draft.ports = { base: alloc.base, block: alloc.block };
+
+  const cfgByName = new Map((draft.targets ?? []).map((t) => [t.name, t]));
+  const used = new Set<number>();
+  for (const t of serving) {
+    const cfg = cfgByName.get(t.name);
+    if (cfg?.ports) used.add(cfg.ports.base);
+  }
+  const assigned: string[] = [];
+  let offset = 0;
+  for (const t of serving) {
+    const cfg = cfgByName.get(t.name);
+    if (!cfg || cfg.ports) continue; // keep an existing assignment
+    while (used.has(alloc.base + offset)) offset += PORT_STEP;
+    cfg.ports = { base: alloc.base + offset };
+    used.add(alloc.base + offset);
+    offset += PORT_STEP;
+    assigned.push(t.name);
+  }
+  return { block: { base: alloc.base, block: alloc.block }, assigned };
+}
+
+// Detect the stack, allocate a conflict-free port block if anything serves, and
+// write a fresh premo.json — discarding any existing one. This is the first-adopt
+// path and the `--force` re-adopt; for a non-destructive re-adopt, see syncProject.
+export async function adoptProject(
+  root: string,
+  { quiet = false }: { quiet?: boolean } = {},
+): Promise<ProjectManifest> {
+  const { draft, adapterName, packageCount } = await detectDraft(root);
+  const { block } = await reconcilePorts(root, draft);
+  const portInfo = block ? `, ports ${block.base}–${block.base + block.block - 1}` : "";
 
   const manifest = ProjectManifest.parse(draft); // validate
   await saveProject(root, draft); // write the clean, un-defaulted version
   await ensurePremoGitignore(root); // keep premo-local state out of git
 
-  const detail = adapter
-    ? `detected ${adapter.name}, ${detected.length} target(s)`
+  const detail = adapterName
+    ? `detected ${adapterName}, ${packageCount} target(s)`
     : "no adapter matched";
   if (!quiet) {
     log.ok(`wrote ${PROJECT_FILE} — ${detail}${portInfo}`);
-    if (!adapter) {
+    if (!adapterName) {
       log.dim('  no commands resolved yet; add them under "commands" in premo.json,');
       log.dim("  or run `premo skill` to generate a task file for a coding agent.");
     }
   }
   return manifest;
+}
+
+export interface SyncResult {
+  manifest: ProjectManifest;
+  changes: AdoptChanges;
+  stale: AdoptStale;
+  changed: boolean;
+}
+
+// Non-destructive re-adopt: fold newly-detected features into the existing
+// premo.json without overriding anything the user configured (see adopt-merge).
+// Allocates ports only for newly-added serving targets, and writes only when the
+// merge actually changed something — so it's safe and idempotent to re-run.
+export async function syncProject(root: string): Promise<SyncResult> {
+  const existing = await readRawProject(root);
+  const { draft: detected } = await detectDraft(root);
+  const { merged, changes, stale } = mergeAdopt(existing, detected);
+
+  // Ports are reconciled against the merged manifest so that only targets without
+  // an existing assignment (e.g. ones we just appended) draw from the block.
+  const { assigned } = await reconcilePorts(root, merged);
+
+  const manifest = ProjectManifest.parse(merged); // validate before write
+  const changed = !changesEmpty(changes) || assigned.length > 0;
+  if (changed) {
+    await saveProject(root, merged);
+    await ensurePremoGitignore(root);
+  }
+  return { manifest, changes, stale, changed };
 }

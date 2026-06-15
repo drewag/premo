@@ -59,6 +59,20 @@ export async function loadProject(dir: string): Promise<ProjectManifest> {
   }
 }
 
+// Read the manifest as the raw JSON object on disk — no zod parse, no defaults,
+// no migration — so `premo adopt`'s additive sync can fill gaps without expanding
+// the user's file into its fully-defaulted form. Use loadProject for everything
+// that needs a validated manifest.
+export async function readRawProject(dir: string): Promise<Record<string, unknown>> {
+  const file = path.join(dir, PROJECT_FILE);
+  if (!existsSync(file)) throw new Error(`No ${PROJECT_FILE} found in ${dir}`);
+  try {
+    return JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+  } catch (e) {
+    throw new Error(`${PROJECT_FILE} is not valid JSON: ${(e as Error).message}`);
+  }
+}
+
 export async function saveProject(dir: string, manifest: ProjectManifestInput): Promise<void> {
   const file = path.join(dir, PROJECT_FILE);
   await writeFile(file, JSON.stringify(manifest, null, 2) + "\n", "utf8");
