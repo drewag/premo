@@ -3,6 +3,7 @@ import pc from "picocolors";
 import { VERBS, type Verb } from "../manifest/types.js";
 import { inspectContext } from "../core/context.js";
 import { resolvePackages } from "../core/packages.js";
+import { resolveTargets } from "../core/targets.js";
 import { log } from "../core/logger.js";
 
 // Commands that support the day-to-day dev loop (shown as active alongside
@@ -28,12 +29,20 @@ export async function printGroupedHelp(program: Command): Promise<void> {
   let projectName: string | null = null;
   let shellAvailable = false;
   const wired = new Set<Verb>();
+  // Project nouns the verbs take as `[target]` / `--env` (DESIGN §13, §15).
+  let targetList: { name: string; isDefault: boolean }[] = [];
+  let envList: { name: string; default?: boolean }[] = [];
   try {
     const insp = await inspectContext(process.cwd());
     if (insp.adopted || insp.adapterName) projectName = insp.manifest.name;
     const packages = await resolvePackages(insp.root, insp.manifest);
     for (const v of VERBS) if (packages.some((p) => p.commands[v])) wired.add(v);
     shellAvailable = Object.keys(insp.manifest.shells).length > 0;
+    targetList = (await resolveTargets(insp.root, insp.manifest)).map((t) => ({
+      name: t.name,
+      isDefault: t.isDefault,
+    }));
+    envList = insp.manifest.environments;
   } catch {
     /* not in a usable project — every verb shows as not wired */
   }
@@ -62,6 +71,28 @@ export async function printGroupedHelp(program: Command): Promise<void> {
     printRows(inactive, true);
   }
 
+  const projectRows: [string, string][] = [];
+  if (targetList.length > 0) {
+    projectRows.push([
+      "targets",
+      fmtNouns(targetList.map((t) => ({ name: t.name, mark: t.isDefault }))) +
+        pc.dim("  — dev/deploy [target]"),
+    ]);
+  }
+  if (envList.length > 0) {
+    projectRows.push([
+      "environments",
+      fmtNouns(envList.map((e) => ({ name: e.name, mark: !!e.default }))) +
+        pc.dim("  — --env <name>"),
+    ]);
+  }
+  if (projectRows.length > 0) {
+    log.info("");
+    log.info(pc.bold("This project") + (projectName ? pc.dim(`  (${projectName})`) : ""));
+    const width = Math.max(...projectRows.map(([n]) => n.length));
+    for (const [name, val] of projectRows) log.info(`  ${pc.cyan(name.padEnd(width))}  ${val}`);
+  }
+
   log.info("");
   log.info(pc.bold("Manage premo"));
   printRows(META.map((n) => [n, desc(n)]));
@@ -73,6 +104,12 @@ export async function printGroupedHelp(program: Command): Promise<void> {
 function inactiveReason(v: Verb): string {
   if (v === "deploy") return "no deploy command — set commands.deploy in premo.json";
   return `no ${v} command — add a ${v} script or set commands.${v}`;
+}
+
+// Render a comma-separated noun list, tagging the marked one (the default
+// target / environment) so `premo` (no args) shows what it'll pick.
+function fmtNouns(items: { name: string; mark: boolean }[]): string {
+  return items.map((i) => i.name + (i.mark ? pc.cyan(" (default)") : "")).join(", ");
 }
 
 function printRows(rows: [string, string][], dimAll = false): void {

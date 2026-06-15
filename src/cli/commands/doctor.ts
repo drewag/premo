@@ -84,6 +84,7 @@ interface ProjectReport {
   background: { name: string; pid: number }[];
   packages: { name: string; commands: Record<Verb, string | null> }[];
   targets: { name: string; dev: boolean; deploy: boolean; default: boolean; port: number | null }[];
+  environments: { name: string; default: boolean; deploy: boolean }[];
   unwired: Verb[];
 }
 
@@ -113,6 +114,11 @@ async function gatherProject(cwd: string): Promise<ProjectReport> {
     default: t.isDefault,
     port: t.ports?.base ?? null,
   }));
+  const environments = manifest.environments.map((e) => ({
+    name: e.name,
+    default: !!e.default,
+    deploy: !!e.deploy,
+  }));
 
   // A verb is wired if its axis resolves it: build/test/lint from a package,
   // dev/deploy from a target.
@@ -134,6 +140,7 @@ async function gatherProject(cwd: string): Promise<ProjectReport> {
     background: bg.map((p) => ({ name: p.name, pid: p.pid })),
     packages,
     targets,
+    environments,
     unwired,
   };
 }
@@ -201,6 +208,10 @@ function renderProject(p: ProjectReport): void {
   printTargets(p.targets);
 
   log.info("");
+  log.info(pc.bold("  Environments") + pc.dim("  (--env · DESIGN §15)"));
+  printEnvironments(p.environments);
+
+  log.info("");
   printGaps(p.unwired);
 }
 
@@ -246,6 +257,18 @@ function printTargets(targets: ProjectReport["targets"]): void {
         port +
         flag,
     );
+  }
+}
+
+function printEnvironments(environments: ProjectReport["environments"]): void {
+  if (environments.length === 0) {
+    log.dim("  (single default environment — add `environments` to premo.json to split dev/prod)");
+    return;
+  }
+  const nameW = Math.max(4, ...environments.map((e) => e.name.length));
+  log.info(pc.dim("  " + "env".padEnd(nameW) + "   default  deploy"));
+  for (const e of environments) {
+    log.info("  " + e.name.padEnd(nameW) + "   " + cell(e.default, 7) + "  " + cell(e.deploy, 6));
   }
 }
 
