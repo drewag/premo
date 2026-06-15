@@ -103,6 +103,14 @@ export const DeployConfig = z.object({
   envs: z.array(z.string()).default(["prod"]),
 });
 
+// How `premo share` exposes a target's port on a public URL (DESIGN §14). The
+// `provider` names a tunnel backend in core/share (tailscale, ngrok, …); a
+// `--via` flag overrides per run. Optional everywhere — absent ⇒ tailscale.
+export const ShareConfig = z.object({
+  provider: z.string().default("tailscale"),
+});
+export type ShareConfig = z.infer<typeof ShareConfig>;
+
 export const ProjectManifest = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]*$/),
   version: z.string().default("0"),
@@ -133,6 +141,8 @@ export const ProjectManifest = z.object({
   changeBase: z.string().default("origin/main"),
   affectedCommand: z.string().nullable().optional(),
   deploy: DeployConfig.optional(),
+  // How `premo share` exposes a target publicly (DESIGN §14). Absent ⇒ tailscale.
+  share: ShareConfig.optional(),
   // Present when the xcode adapter has adopted this project.
   xcode: XcodeConfig.optional(),
   worktree: z.object({ carry: z.array(z.string()).default([]) }).optional(),

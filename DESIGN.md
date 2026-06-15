@@ -58,7 +58,7 @@ The closed P0 set. Each verb takes an optional `[target]` (a named sub-unit of a
 
 **Scope granularity is deliberately split:** `build`/`test`/`deploy` operate at **target** granularity (rebuild/retest/ship a whole unit if any of its files changed); `lint` operates at **file** granularity (lint exactly the changed files). This mirrors `odo/email` and matches how the tools actually work — eslint takes a file list, but you can't "build half a target."
 
-Utility commands alongside the core verbs (secondary): `doctor`, `adopt`, `ports`, `open`, `shell`.
+Utility commands alongside the core verbs (secondary): `doctor`, `adopt`, `ports`, `open`, `shell`, `share` (§14).
 
 ---
 
@@ -306,6 +306,12 @@ Monorepo model (§13, supersedes the single-`targets` parts of 12/13/15 above):
 24. **`dev` run method is derived** (`compose` → `command` → member packages' dev), **ports moved onto targets** ($PORT injected), and **`deploy` is per-target** with bare `premo deploy` an interactive multi-select pre-checked to the pending set (`--yes` non-interactive, `--force` to redeploy).
 25. **premo detects, but does not infer topology.** Packages, 1:1 targets, and the `deploy:<name>` convention auto-detect; which compose service is infra / how services wire is confirmed by AI/human. That boundary keeps the config declarative without a DSL.
 
+`share` (§14, supersedes nothing — purely additive):
+
+26. **`share` is a utility command, not a sixth core verb.** It exposes a running target's port on a public URL; it touches none of the affected/packages/deploy machinery the five verbs share, so it sits with `open`/`shell`/`ports` and the closed verb vocabulary (decision 9) stays closed. It is **target-axis** — `share [target]` mirrors `dev [target]`, funneling the target's `ports.base`.
+27. **Tunnel backends are a provider registry** (`core/share/`), the same registered-strategy shape as `core/runners`: a `ShareProvider` knows if it's available, the foreground command to run for a port, and how to report the public URL. **tailscale (funnel) is first;** ngrok/cloudflared slot in by registering. Provider choice is `--via` → `share.provider` → `"tailscale"`.
+28. **premo owns the tunnel's lifecycle, not the backend's `--bg`.** Every provider runs its tunnel in the **foreground** (`tailscale funnel <port>`, not `--bg`) so premo's own supervision (decision 16) governs it: foreground tears down on Ctrl-C, `--background` detaches via `spawnDetached`, and `stop`/`logs` manage it uniformly across providers. Deferring to each tool's own background flag would hide the tunnel from `stop`/`logs`.
+
 ---
 
 ## 11. The scaffolder (a separate project)
@@ -446,6 +452,59 @@ Reading it: `premo dev` → the `stack` (compose: `db+redis+qdrant+backend+worke
 ### 13.7 Honest scope boundary
 
 premo detects packages, seeds 1:1 targets, and maps the `deploy:<name>` convention — but it does **not** try to auto-infer a repo's _topology_ (which compose service is infra, who wires to whom). That wiring (the composite `dev` targets) is confirmed by AI/human. This is the line that keeps premo from needing either magic or a config DSL, and it's exactly where "reasonable to require AI to wire up a complex repo" lands.
+
+---
+
+## 14. `share` — public tunnels (a utility command)
+
+> Additive. Does not touch the affected primitive (§4), packages/targets resolution (§13), or deploy refs (§6.5). It is the public-URL sibling of `open`: where `open` launches `http://localhost:${PORT}` in your browser, `share` exposes that same port on the internet.
+
+### 14.1 Shape
+
+```
+share [target] [--via <provider>] [--background]
+```
+
+- **Target-axis** (like `dev`/`deploy`). Resolves through `resolveTargets` + `defaultTarget`; the public origin proxies the target's `ports.base` (falling back to the project `ports.base`). No port allocated ⇒ the same helpful message `open` gives (run `dev`/`adopt`, or set `ports`).
+- **Tunnel-only.** v1 assumes something is (or will be) listening on the port — run `premo dev` alongside. `share` does one thing: expose a port. Bringing `dev` up in the same command is a possible later `--with-dev`, deliberately deferred (it would couple `share` to the dev supervisor).
+- **Lifecycle = the §6.1 supervision layer.** Foreground by default — the tunnel runs over the inherited TTY and Ctrl-C drops it (the [premo dev lifecycle] property: foreground premo tears down what it started). `--background` detaches via `spawnDetached`, recorded in `.premo-local.json` as `share-<target>`, so `premo logs` tails it and `premo stop` ends it — the same records `dev --background` uses.
+
+### 14.2 The provider registry
+
+`core/share/` mirrors `core/runners/` — a registered-strategy list, looked up by name:
+
+```ts
+interface ShareProvider {
+  name: string; // "tailscale" | "ngrok" | "cloudflared"
+  isAvailable(): Promise<{ ok: boolean; reason?: string }>; // installed + authed (+ funnel-enabled)
+  command(port: number): string; // the FOREGROUND tunnel command premo supervises
+  publicUrl(port: number): Promise<string | null>; // the URL to surface (best-effort)
+}
+```
+
+`isAvailable` carries a `reason` so an unavailable provider produces the "helpful not-implemented" message (§3), not a raw CLI error. `command` returns a shell string premo runs and supervises — identical to how a runner returns a command, so the supervisor plugs in unchanged. `publicUrl` is the one genuinely per-provider seam: tailscale derives it from the node's MagicDNS name; ngrok would read it from ngrok's local API.
+
+Provider choice: `--via` flag → `share.provider` in `premo.json` → `"tailscale"` default.
+
+### 14.3 The tailscale provider (first)
+
+"Public so others can access it" ⇒ **`tailscale funnel`** (not `tailscale serve`, which is tailnet-private). Specifics that shape the provider:
+
+- **Command:** `tailscale funnel <port>` — the **foreground** form (the bare `<target>` form in `tailscale funnel --help`). Premo does **not** pass `--bg`; premo's own `--background` does the detaching, so `stop`/`logs` stay authoritative (decision 28).
+- **Public URL:** funnel terminates TLS and serves on `https://<node>.<tailnet>.ts.net` (default public port 443 ⇒ no port in the URL). `publicUrl` reads `tailscale status --json` → `Self.DNSName`. If `openUrl` declares a path, premo appends it so collaborators land on the right page.
+- **Constraints surfaced by `isAvailable`:** tailscale installed + logged in; and Funnel must be enabled in the tailnet policy with HTTPS certs (MagicDNS). A missing prerequisite is reported as the actionable next step, not a stack trace.
+
+### 14.4 Config
+
+A small, optional block — provider only, for now:
+
+```jsonc
+{
+  "share": { "provider": "tailscale" }, // omit ⇒ tailscale; `--via` overrides per-run
+}
+```
+
+Per-target provider overrides can layer on later (the way commands/ports already sit on targets) if a repo ever needs to share different targets through different backends; not needed for v1.
 
 ---
 

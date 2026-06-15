@@ -8,7 +8,7 @@ import { log } from "../core/logger.js";
 // Commands that support the day-to-day dev loop (shown as active alongside
 // whichever verbs are wired), versus premo-management commands. `shell` is
 // conditionally active — only when the project declares one.
-const PROJECT_HELPERS = ["open", "logs", "stop"];
+const PROJECT_HELPERS = ["open", "share", "logs", "stop"];
 const META = ["doctor", "adopt", "skill", "ports", "completion"];
 
 // True when the invocation is a request for the top-level overview — no

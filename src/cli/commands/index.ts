@@ -10,6 +10,7 @@ import { register as stop } from "./stop.js";
 import { register as logs } from "./logs.js";
 import { register as ports } from "./ports.js";
 import { register as open } from "./open.js";
+import { register as share } from "./share.js";
 import { register as shell } from "./shell.js";
 import { register as skill } from "./skill.js";
 import { register as completion } from "./completion.js";
@@ -29,6 +30,7 @@ export const COMMANDS: RegisterFn[] = [
   logs,
   ports,
   open,
+  share,
   shell,
   skill,
   completion,
