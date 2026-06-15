@@ -77,8 +77,14 @@ export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Prom
   const { packages, note } = selection;
   if (note) log.dim(`  ${note}`);
 
-  // Repo `.env` (gap-fill) so build/test/lint see the same config as dev + compose.
-  const fileVars = await envFileVars(ctx.root, ctx.manifest.envFile ?? undefined);
+  // Repo `.env` (gap-fill) so build/test/lint see the same config as dev + compose,
+  // overlaid with the active environment's `.env.<env>` (PREMO_ENV is set by the
+  // caller's env resolution when the project declares an environments axis).
+  const fileVars = await envFileVars(
+    ctx.root,
+    ctx.manifest.envFile ?? undefined,
+    opts.env?.PREMO_ENV,
+  );
 
   const runnable = packages.filter((p) => p.commands[verb]);
   if (runnable.length === 0) {

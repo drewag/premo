@@ -111,7 +111,11 @@ async function runAdoptedDev(
     return;
   }
 
-  const fileVars = await envFileVars(ctx.root, ctx.manifest.envFile ?? undefined);
+  const fileVars = await envFileVars(
+    ctx.root,
+    ctx.manifest.envFile ?? undefined,
+    extraEnv?.PREMO_ENV,
+  );
   const env: NodeJS.ProcessEnv = { ...process.env, ...fileVars, ...extraEnv };
   const portBase = target.ports?.base ?? ctx.manifest.ports?.base;
 

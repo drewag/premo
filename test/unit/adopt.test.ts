@@ -84,6 +84,21 @@ describe("adoptProject — manual monorepo", () => {
     const m = await adoptProject(root, { quiet: true });
     expect(m.envFile ?? null).toBeNull();
   });
+
+  it("seeds the environments axis from .env.<env> overlay files", async () => {
+    const root = await fixture();
+    await writeFile(path.join(root, ".env"), "DATABASE_URL=x\n");
+    await writeFile(path.join(root, ".env.sandbox"), "PLAID_ENV=sandbox\n");
+    await writeFile(path.join(root, ".env.production"), "PLAID_ENV=production\n");
+    await writeFile(path.join(root, ".env.example"), "PLAID_ENV=\n"); // ignored
+    await writeFile(path.join(root, ".env.local"), "SECRET=1\n"); // ignored
+
+    const m = await adoptProject(root, { quiet: true });
+    const names = m.environments.map((e) => e.name).sort();
+    expect(names).toEqual(["production", "sandbox"]);
+    expect(m.environments.find((e) => e.name === "sandbox")!.default).toBe(true); // dev-ish
+    expect(m.environments.find((e) => e.name === "production")!.deploy).toBe(true); // prod-ish
+  });
 });
 
 // Read the raw manifest object for hand-editing in tests (loadProject applies

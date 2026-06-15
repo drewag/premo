@@ -95,4 +95,21 @@ describe("gapFill / envFileVars", () => {
     expect(vars.PREMO_TEST_FROM_FILE).toBe("yes");
     expect(vars.PATH).toBeUndefined(); // real PATH wins
   });
+
+  it("layers a per-environment overlay (.env.<env>) over the base, overlay winning", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "premo-env-"));
+    await writeFile(path.join(dir, ".env"), "PREMO_TEST_SHARED=base\nPREMO_TEST_PLAID=sandbox\n");
+    await writeFile(path.join(dir, ".env.production"), "PREMO_TEST_PLAID=production\n");
+
+    const base = await envFileVars(dir, ".env");
+    expect(base.PREMO_TEST_PLAID).toBe("sandbox"); // no env ⇒ base only
+
+    const prod = await envFileVars(dir, ".env", "production");
+    expect(prod.PREMO_TEST_PLAID).toBe("production"); // overlay wins
+    expect(prod.PREMO_TEST_SHARED).toBe("base"); // base shows through
+
+    // an env with no overlay file falls back to the base values
+    const missing = await envFileVars(dir, ".env", "staging");
+    expect(missing.PREMO_TEST_PLAID).toBe("sandbox");
+  });
 });

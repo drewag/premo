@@ -34,12 +34,22 @@ export function gapFill(fileVars: Record<string, string>): Record<string, string
   return out;
 }
 
-// Convenience: the gap-fill env vars from a project's configured `envFile`.
+// Convenience: the gap-fill env vars from a project's configured `envFile`,
+// optionally overlaid with a per-environment file. With an active env `<E>`,
+// `.env` is layered under `.env.<E>` (the overlay wins) before gap-filling — so
+// `--env production` picks up `.env.production` on top of the base `.env`
+// (DESIGN §15). The real shell env still wins over both (gapFill).
 export async function envFileVars(
   root: string,
   envFile: string | undefined,
+  envName?: string | null,
 ): Promise<Record<string, string>> {
-  return gapFill(await loadEnvFile(root, envFile));
+  const base = await loadEnvFile(root, envFile);
+  if (envFile && envName) {
+    const overlay = await loadEnvFile(root, `${envFile}.${envName}`);
+    return gapFill({ ...base, ...overlay });
+  }
+  return gapFill(base);
 }
 
 export function interpolateEnv(input: string, env: Record<string, string | number>): string {

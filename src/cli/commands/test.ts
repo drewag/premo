@@ -9,12 +9,13 @@ export function register(program: Command): void {
     .description("Test the affected targets (default), one target, or --all.")
     .argument("[target]", "test a single target")
     .option("--all", "test every target, not just affected")
+    .option("-e, --env <name>", "environment to test (e.g. dev | prod); see premo.json")
     .option("--device <name>", "destination device/simulator (xcode projects)")
     .option("--platform <name>", "destination platform: ios | macos | visionos (xcode projects)")
     .action(
       async (
         target: string | undefined,
-        opts: { all?: boolean; device?: string; platform?: string },
+        opts: { all?: boolean; env?: string; device?: string; platform?: string },
       ) => {
         const ctx = await ensureContext(process.cwd());
         const env = await resolveXcodeEnv(ctx, opts, false, false, target);

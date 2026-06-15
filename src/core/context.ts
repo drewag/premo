@@ -1,5 +1,5 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { ProjectManifest, type ProjectManifestInput } from "../manifest/types.js";
 import {
   PROJECT_FILE,
@@ -69,6 +69,48 @@ export async function ensureContext(cwd: string): Promise<Context> {
   return { root, manifest };
 }
 
+// Per-environment dotenv overlays (`.env.<env>` next to the base `envFile`) seed
+// the environments axis for non-xcode repos (DESIGN §15) — the way several xcode
+// schemes do for native apps. Conventional non-overlay siblings are ignored.
+const ENV_FILE_IGNORE = new Set([
+  "example",
+  "sample",
+  "local",
+  "template",
+  "templates",
+  "defaults",
+  "dist",
+  "test",
+]);
+const ENV_DEFAULTISH = ["development", "dev", "local", "sandbox", "debug"];
+const ENV_DEPLOYISH = ["production", "prod", "staging", "release", "live"];
+
+function detectEnvironments(
+  root: string,
+  envFile: string | undefined,
+): NonNullable<ProjectManifestInput["environments"]> | undefined {
+  if (!envFile) return undefined;
+  const baseName = path.basename(envFile);
+  const dir = path.dirname(path.join(root, envFile));
+  let names: string[];
+  try {
+    names = readdirSync(dir)
+      .filter((f) => f.startsWith(baseName + "."))
+      .map((f) => f.slice(baseName.length + 1))
+      // skip `.env.<x>.local` (a dotted remainder) and conventional non-overlays
+      .filter((s) => s.length > 0 && !s.includes(".") && !ENV_FILE_IGNORE.has(s));
+  } catch {
+    return undefined;
+  }
+  if (names.length === 0) return undefined;
+  const def = names.find((n) => ENV_DEFAULTISH.includes(n)) ?? names[0];
+  return names.map((n) => ({
+    name: n,
+    ...(n === def ? { default: true } : {}),
+    ...(ENV_DEPLOYISH.includes(n) ? { deploy: true } : {}),
+  }));
+}
+
 // The clean, un-defaulted draft a fresh adopt would write, plus the facts the
 // caller needs for messaging. Targets are seeded and materialized but carry no
 // ports yet — port reconciliation is a separate, mergeable pass (see below).
@@ -113,6 +155,25 @@ async function detectDraft(root: string): Promise<DetectResult> {
     packages,
     ...baked,
   };
+
+  // Seed the environments axis from `.env.<env>` overlays, unioned with any envs
+  // an adapter already baked (e.g. xcode dev/prod schemes). A baked default wins;
+  // otherwise the env-file detection's own default stands.
+  const envFileEnvs = detectEnvironments(
+    root,
+    typeof draft.envFile === "string" ? draft.envFile : undefined,
+  );
+  if (envFileEnvs) {
+    const existing = draft.environments ?? [];
+    const have = new Set(existing.map((e) => e.name));
+    const hasDefault = existing.some((e) => e.default);
+    const additions = envFileEnvs
+      .filter((e) => !have.has(e.name))
+      .map((e) =>
+        hasDefault && e.default ? { name: e.name, ...(e.deploy ? { deploy: true } : {}) } : e,
+      );
+    if (additions.length > 0) draft.environments = [...existing, ...additions];
+  }
 
   // Seed run/deploy targets 1:1 from the resolved packages (DESIGN §13.3) and
   // materialize them (without ports); composite targets are added by hand.
