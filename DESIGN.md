@@ -234,6 +234,8 @@ Built-in detectors that supply default verb commands (and enumerate targets) wit
 
 `premo adopt` is the **configure tier**: run the best-matching adapter's detection, then _write_ the resolved `commands` + `targets` into `premo.json` so the user can edit a concrete starting point instead of relying on live magic. An adapter may implement an optional `adopt(root)` hook to contribute baked config (the xcode adapter uses this to compile its `xcode` facts block — the build verbs then resolve live through the xcode runner, per §3's Script/runner note — exactly the "configure tier produces concrete output" property of §3). The **skill tier** emits a `SKILL.md` for an agent when detection can't produce a working config.
 
+**Re-adopt is an additive sync, not a regenerate.** Running `premo adopt` on an already-adopted repo folds newly-detected features into the existing `premo.json` without overriding anything the user configured: existing values always win, detection only fills gaps and appends new entries (packages, targets, environments, commands), and ports are assigned only to newly-added serving targets so existing pins survive. Nothing is removed — entries the repo no longer backs are reported as _stale_ rather than deleted (the user's call). It's idempotent: a re-adopt with no repo changes writes nothing. `premo adopt --force` is the escape hatch that regenerates from scratch, discarding manual edits. This makes re-adopt safe to run habitually as a project grows, which is the whole point — you add a package or a deploy script and `premo adopt` notices.
+
 ---
 
 ## 8. CLI architecture (current → target)

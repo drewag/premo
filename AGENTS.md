@@ -22,7 +22,7 @@ Run these first — they have **`--json`** for stable, parseable output:
 
 ```bash
 premo doctor --json   # host prereqs + which verbs are wired per target + gaps
-premo adopt --json    # detect the stack and write premo.json (first-time setup)
+premo adopt --json    # detect the stack and write/sync premo.json (safe to re-run; additive, never overrides edits)
 premo ports --json    # the project's allocated port (PORT env for dev)
 ```
 
