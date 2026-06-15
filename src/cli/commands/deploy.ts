@@ -4,6 +4,7 @@ import pc from "picocolors";
 import { ensureContext } from "../../core/context.js";
 import { resolveTargets, type Target } from "../../core/targets.js";
 import { resolvePackages } from "../../core/packages.js";
+import { deployableEnvNames } from "../../manifest/environments.js";
 import { envFileVars } from "../../core/env.js";
 import { multiSelectFromList } from "../../core/select.js";
 import { nextVersion } from "../../core/version.js";
@@ -78,14 +79,19 @@ export function register(program: Command): void {
           return;
         }
 
-        const envs = ctx.manifest.deploy?.envs ?? ["prod"];
-        const env = opts.env ?? envs[0]!;
-        if (!envs.includes(env)) {
-          log.error(`Unknown env "${env}". Configured: ${envs.join(", ")}`);
+        // Deploy destinations are the `deploy: true` entries of the environments
+        // axis (DESIGN §15.2); with none declared, a single implicit "prod" env
+        // preserves the pre-§15 default. The `<env>` ref segment (§6.5) appears
+        // only when more than one is deployable.
+        const envs = deployableEnvNames(ctx.manifest.environments);
+        const deployEnvs = envs.length > 0 ? envs : ["prod"];
+        const env = opts.env ?? deployEnvs[0]!;
+        if (!deployEnvs.includes(env)) {
+          log.error(`Unknown deploy env "${env}". Deployable: ${deployEnvs.join(", ")}`);
           process.exitCode = 1;
           return;
         }
-        const multiEnv = envs.length > 1;
+        const multiEnv = deployEnvs.length > 1;
 
         const head = await headCommit(ctx.root);
         if (!head) {
@@ -183,6 +189,7 @@ export function register(program: Command): void {
               PREMO_DEPLOY_VERSION: version,
               PREMO_DEPLOY_TARGET: p.target.name,
               PREMO_DEPLOY_ENV: env,
+              PREMO_ENV: env,
             },
           });
           if (res.exitCode !== 0) {

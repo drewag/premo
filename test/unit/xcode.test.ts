@@ -106,10 +106,10 @@ describe("findXcodeProject / adapter detection", () => {
 });
 
 describe("xcodeCommands / adapter.command", () => {
-  it("threads the destination through PREMO_XCODE_DEST and bakes scheme", () => {
-    const cmds = xcodeCommands("-project Awooga.xcodeproj", "Awooga");
+  it("threads the destination and scheme through PREMO_XCODE_DEST / PREMO_XCODE_SCHEME", () => {
+    const cmds = xcodeCommands("-project Awooga.xcodeproj");
     expect(cmds.build).toBe(
-      'xcodebuild -project Awooga.xcodeproj -scheme Awooga -destination "$PREMO_XCODE_DEST" build',
+      'xcodebuild -project Awooga.xcodeproj -scheme "$PREMO_XCODE_SCHEME" -destination "$PREMO_XCODE_DEST" build',
     );
     expect(cmds.test).toContain('-destination "$PREMO_XCODE_DEST" test');
     expect(cmds.dev).toContain("PREMO_XCODE_BOOT_UDID");

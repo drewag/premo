@@ -34,7 +34,10 @@ async function shellNames(cwd: string): Promise<string[]> {
 
 async function envNames(cwd: string): Promise<string[]> {
   const { manifest } = await inspectContext(cwd);
-  return manifest.deploy?.envs ?? ["prod"];
+  // The environments axis (DESIGN §15) — every declared env is a valid `--env`
+  // for dev; deploy further restricts to the deployable subset at run time.
+  const names = manifest.environments.map((e) => e.name);
+  return names.length > 0 ? names : ["prod"];
 }
 
 // Soft suggestions — NOT a hard enum: `--platform` parsing is intentionally

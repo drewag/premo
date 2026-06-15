@@ -70,7 +70,7 @@ describe("resolvePackages", () => {
     const ios = (await resolvePackages(root, manifest)).find((p) => p.name === "ios")!;
     expect(ios.xcode?.scheme).toBe("odo");
     expect(ios.commands.build).toBe(
-      'xcodebuild -project odo.xcodeproj -scheme odo -destination "$PREMO_XCODE_DEST" build',
+      'xcodebuild -project odo.xcodeproj -scheme "$PREMO_XCODE_SCHEME" -destination "$PREMO_XCODE_DEST" build',
     );
     expect(ios.commands.dev).toContain("PREMO_XCODE_BUNDLE_ID");
   });
@@ -90,7 +90,7 @@ describe("resolvePackages", () => {
     // ...and drives the implied runner — commands run from the member dir, so the
     // project path is the member-relative basename.
     expect(ios.commands.build).toBe(
-      'xcodebuild -project Finances.xcodeproj -scheme Finances -destination "$PREMO_XCODE_DEST" build',
+      'xcodebuild -project Finances.xcodeproj -scheme "$PREMO_XCODE_SCHEME" -destination "$PREMO_XCODE_DEST" build',
     );
     expect(ios.commands.dev).toContain("xcodebuild");
   });
@@ -108,7 +108,7 @@ describe("resolvePackages", () => {
     // using the resolved scheme (not a basename guess).
     expect(manifest.commands).toEqual({});
     expect(app.commands.build).toBe(
-      'xcodebuild -project Awooga.xcodeproj -scheme Awooga -destination "$PREMO_XCODE_DEST" build',
+      'xcodebuild -project Awooga.xcodeproj -scheme "$PREMO_XCODE_SCHEME" -destination "$PREMO_XCODE_DEST" build',
     );
     expect(app.commands.test).toContain('-destination "$PREMO_XCODE_DEST" test');
     expect(app.commands.dev).toContain("PREMO_XCODE_BUNDLE_ID");
@@ -139,7 +139,7 @@ describe("resolvePackages", () => {
     });
     const app = (await resolvePackages(root, manifest)).find((p) => p.name === "awooga")!;
     expect(app.commands.build).toBe(
-      'xcodebuild -project Awooga.xcodeproj -scheme Awooga -destination "$PREMO_XCODE_DEST" build',
+      'xcodebuild -project Awooga.xcodeproj -scheme "$PREMO_XCODE_SCHEME" -destination "$PREMO_XCODE_DEST" build',
     );
   });
 });

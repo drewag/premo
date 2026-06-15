@@ -1,18 +1,15 @@
-import { shq } from "../shell.js";
-
-// The baked verb commands. Project + scheme are stable (baked here); only the
-// destination varies per run, threaded in as PREMO_XCODE_DEST. dev also reads
-// PREMO_XCODE_BUNDLE_ID and routes on the destination kind: a physical device
-// (PREMO_XCODE_DEVICE_UDID) installs/launches via devicectl, a simulator
-// (PREMO_XCODE_BOOT_UDID) via simctl, and macOS execs the built .app's binary
-// directly (not `open`) so the app is a real child of the dev process: its
-// stdout/stderr stream to the console, SIGTERM kills it on quit, and a restart
-// relaunches the fresh build instead of just refocusing the stale instance.
-export function xcodeCommands(
-  flag: string,
-  scheme: string,
-): { dev: string; build: string; test: string } {
-  const base = `xcodebuild ${flag} -scheme ${shq(scheme)}`;
+// The baked verb commands. Only the project path is stable here; the two
+// per-run variables are threaded in as env (DESIGN §15.3): the destination as
+// PREMO_XCODE_DEST and the active environment's scheme as PREMO_XCODE_SCHEME (so
+// the dev/prod scheme is chosen by `--env` without re-baking the command). dev
+// also reads PREMO_XCODE_BUNDLE_ID and routes on the destination kind: a
+// physical device (PREMO_XCODE_DEVICE_UDID) installs/launches via devicectl, a
+// simulator (PREMO_XCODE_BOOT_UDID) via simctl, and macOS execs the built .app's
+// binary directly (not `open`) so the app is a real child of the dev process:
+// its stdout/stderr stream to the console, SIGTERM kills it on quit, and a
+// restart relaunches the fresh build instead of just refocusing the stale one.
+export function xcodeCommands(flag: string): { dev: string; build: string; test: string } {
+  const base = `xcodebuild ${flag} -scheme "$PREMO_XCODE_SCHEME"`;
   const built = `${base} -configuration Debug -destination "$PREMO_XCODE_DEST" -derivedDataPath "$DD"`;
   const dev = [
     `set -e`,

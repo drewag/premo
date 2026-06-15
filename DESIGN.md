@@ -158,16 +158,21 @@ Every field is **optional and additive**, so an adopted project carries only the
   },
   "changeBase": "origin/main",
   "affectedCommand": null,
-  "deploy": {
-    "envs": ["prod"], // single env ⇒ refs are `deployed/<target>`;
-    // multiple ⇒ `deployed/<env>/<target>`
-  },
+  // the project's environments — the orthogonal facet axis (§15); a single
+  // implicit `default` env is assumed when omitted. `deploy: true` marks an env
+  // as a deploy destination (it replaces the old `deploy.envs` list).
+  "environments": [
+    { "name": "dev", "default": true },
+    { "name": "prod", "deploy": true },
+  ],
   "worktree": {
     "carry": ["node_modules", ".env"], // §9.1
   },
   // a conflict-free port block, allocated on adopt for projects that serve
   "ports": { "base": 31200, "block": 100 },
-  // present after the xcode adapter adopts a native app
+  // present after the xcode adapter adopts a native app; a single scheme/bundleId
+  // is the one-environment case, a per-env map (§15) is written when the project
+  // exposes several schemes
   "xcode": { "scheme": "Awooga", "defaultDestination": { "platform": "ios-simulator" } },
 }
 ```
@@ -208,7 +213,7 @@ Affected targets by default (§4); `--all` for everything; `[target]` for one. E
 
 Pure-git tracking lifted from `odo/email` (no external state):
 
-- **Per-target deployed ref.** One env → `deployed/<target>`; multiple configured envs → `deployed/<env>/<target>`. The env segment only appears when `deploy.envs` has more than one entry.
+- **Per-target deployed ref.** One deployable env → `deployed/<target>`; multiple → `deployed/<env>/<target>`. The env segment only appears when more than one environment is marked `deploy: true` (§15) — the deployable set is derived from the canonical `environments` list, not a separate `deploy.envs`.
 - **Change listing.** For each target, `git log <deployed-ref>..<base>` lists undeployed commits; each commit is annotated with the targets it affects via the §4 primitive — so you see exactly what will ship and to which targets.
 - **On deploy.** Run the target's deploy command, then advance the ref: checkout `deployed/<…>`, `git merge <base> --ff-only`, tag a version, push branch + tag, return. Fast-forward-only keeps the ref an honest pointer at "the commit currently deployed."
 
@@ -222,7 +227,7 @@ See §6.1 — they exist to manage `dev --background` and read from the same `.p
 
 Built-in detectors that supply default verb commands (and enumerate targets) with zero config:
 
-- **xcode** (first; native Apple apps) — detects a root `.xcodeproj`/`.xcworkspace`; one target per project, `premo test` runs the whole scheme (unit + UI). Its `adopt()` hook (see below) runs `xcodebuild -list` once to bake the _facts_ — scheme, bundle id, a pinned default simulator (`xcode.defaultDestination`) — into an `xcode` block, but **not** the `dev`/`build`/`test` commands. Those are supplied live by the **xcode runner** (`core/runners`): an `xcode` block _implies_ a `{ run: "xcode" }` script for the build verbs, and the runner generates the command at resolve time. So the multi-step recipe (build → install → launch) lives in premo — versioned, upgradeable, never frozen as bash-in-JSON in each repo — while config stays a tiny declarative block (see §3's Script/runner note). The one runtime variable — _which simulator/device to run on_ — is resolved per-invocation (the `--device`/`--platform` flag → the pinned default → an interactive picker on a TTY) and injected as `PREMO_XCODE_DEST`, the single seam through which device choice reaches the generated command. `dev` builds → boots the sim → installs → launches with streamed logs in the foreground (macOS execs the built `.app`'s binary directly so it's a killable child). A literal command string (or explicit spec) under `commands` overrides the implied runner per verb.
+- **xcode** (first; native Apple apps) — detects a root `.xcodeproj`/`.xcworkspace`; one target per project, `premo test` runs the whole scheme (unit + UI). Its `adopt()` hook (see below) runs `xcodebuild -list` once to bake the _facts_ — scheme, bundle id, a pinned default simulator (`xcode.defaultDestination`) — into an `xcode` block, but **not** the `dev`/`build`/`test` commands. When the project exposes **several shared schemes** (the classic dev/prod split), adopt derives an environment per scheme and bakes a per-env `{ scheme, bundleId }` map instead of a single pair (§15), so each environment installs/launches its own bundle. Those are supplied live by the **xcode runner** (`core/runners`): an `xcode` block _implies_ a `{ run: "xcode" }` script for the build verbs, and the runner generates the command at resolve time. So the multi-step recipe (build → install → launch) lives in premo — versioned, upgradeable, never frozen as bash-in-JSON in each repo — while config stays a tiny declarative block (see §3's Script/runner note). Two runtime variables feed the generated command: _which simulator/device to run on_ — resolved per-invocation (the `--device`/`--platform` flag → the pinned default → an interactive picker on a TTY) and injected as `PREMO_XCODE_DEST` — and _which environment_ (§15) — the `--env` flag → the `default` env — which selects the scheme/bundleId pair the rest of the recipe builds, installs, and launches. `dev` builds → boots the sim → installs → launches with streamed logs in the foreground (macOS execs the built `.app`'s binary directly so it's a killable child). A literal command string (or explicit spec) under `commands` overrides the implied runner per verb.
 - **workspaces** (matches the reference projects) — reads workspace globs from `package.json` `workspaces` (yarn/npm) or `pnpm-workspace.yaml`; each workspace is a target with `dirs: ["<path>/"]`; verb commands map to the detected package manager's `<script>` when it exists.
 - **package.json scripts** (single-package node) — maps verbs to `yarn <script>` / `npm run <script>` when present.
 - Future: Cargo, Go, Make passthrough, etc. — each new adapter fills a column of the (verb × project-type) matrix.
@@ -311,6 +316,10 @@ Monorepo model (§13, supersedes the single-`targets` parts of 12/13/15 above):
 26. **`share` is a utility command, not a sixth core verb.** It exposes a running target's port on a public URL; it touches none of the affected/packages/deploy machinery the five verbs share, so it sits with `open`/`shell`/`ports` and the closed verb vocabulary (decision 9) stays closed. It is **target-axis** — `share [target]` mirrors `dev [target]`, funneling the target's `ports.base`.
 27. **Tunnel backends are a provider registry** (`core/share/`), the same registered-strategy shape as `core/runners`: a `ShareProvider` knows if it's available, the foreground command to run for a port, and how to report the public URL. **tailscale (funnel) is first;** ngrok/cloudflared slot in by registering. Provider choice is `--via` → `share.provider` → `"tailscale"`.
 28. **premo owns the tunnel's lifecycle, not the backend's `--bg`.** Every provider runs its tunnel in the **foreground** (`tailscale funnel <port>`, not `--bg`) so premo's own supervision (decision 16) governs it: foreground tears down on Ctrl-C, `--background` detaches via `spawnDetached`, and `stop`/`logs` manage it uniformly across providers. Deferring to each tool's own background flag would hide the tunnel from `stop`/`logs`.
+
+Environments (§15, supersedes the `deploy.envs` half of decision 15):
+
+29. **Environments are a third, orthogonal axis** (§15) — a project-wide _facet_ (dev/prod/…) selected with a global `--env`, not packages and not targets, resolved at run time so it never multiplies the target list. One canonical `environments` list is the single source of truth: `deploy: true` marks a deploy destination (the old `deploy.envs` is derived from it and migrated at load), `default` is the omitted-`--env` env, and an absent block means one implicit env (today's behavior). The active env is exported as `PREMO_ENV`. xcode units carry a per-env `{ scheme, bundleId }` map (a bare `scheme`/`bundleId` is the one-env case); only `dev`/`deploy` consult the env so far — `build`/`test`/`lint` stay env-agnostic.
 
 ---
 
@@ -507,6 +516,62 @@ A small, optional block — provider only, for now:
 Per-target provider overrides can layer on later (the way commands/ports already sit on targets) if a repo ever needs to share different targets through different backends; not needed for v1.
 
 ---
+
+## 15. Environments — the facet axis
+
+> Additive, and a **completion** rather than a new concept: `deploy.envs` (§6.5) was already "the project's environments, but only visible to `deploy`." §15 promotes that list to a first-class, project-wide axis the **other verbs** see too, and folds `deploy.envs` into it.
+
+### 15.1 The third thing
+
+§13 established two axes — **packages** (the `build`/`test`/`lint` unit) and **targets** (the `dev`/`deploy` unit). An **environment** is neither: it's an orthogonal _facet_ that, when selected, swaps each unit to its env-specific configuration. dev vs prod is the canonical case — an iOS app with `Chess Dev` / `Chess Prod` schemes, a backend pointed at a dev vs prod database, a deploy that ships to the prod ref.
+
+The alternative — flattening dev/prod into the target list as `ios-dev` / `ios-prod` — is the §13.1 mistake again: in a monorepo it's a cartesian product (every package × every env) no one can read. So the environment is resolved **at run time**, the same shape as device selection: one project-wide switch, never a multiplied noun.
+
+| axis             | unit                            | verbs                 | selection        |
+| ---------------- | ------------------------------- | --------------------- | ---------------- |
+| **packages**     | a directory of code             | build / test / lint   | `[package]` arg  |
+| **targets**      | a runnable/shippable of 1+ pkgs | dev / deploy          | `[target]` arg   |
+| **environments** | a facet of the whole project    | dev / deploy (so far) | `--env` (global) |
+
+### 15.2 Canonical list, deploy is a flag
+
+The project declares one list. Each environment may mark itself a deploy destination; the deploy env set (§6.5) is **derived** from it, so there is no separate `deploy.envs`:
+
+```jsonc
+"environments": [
+  { "name": "dev",  "default": true },  // bare `premo dev` / non-deploy verbs
+  { "name": "prod", "deploy": true },   // deployable; `premo dev --env prod` still works
+]
+```
+
+- **`default`** is the env used when `--env` is omitted (and the implicit env when the field is absent entirely — a project with no `environments` block behaves exactly as today, as a single unnamed env).
+- **`deploy: true`** is what the §6.5 ref-segment rule counts: one deployable env → `deployed/<target>`; multiple → `deployed/<env>/<target>`.
+- **Migration:** a legacy `deploy.envs: [...]` is read at load and rewritten to `environments` (each listed env gets `deploy: true`; a `default` is backfilled), per the §13.4 backfill philosophy. `deploy.envs` is no longer written.
+
+### 15.3 Selection is one project-wide switch
+
+`premo dev --env prod` (alias `-e`) flips **every unit that defines that env** to its prod configuration; units with no env-specific config are unaffected. This is what keeps the target list flat — the dev/prod dimension never materializes as targets; it's `target × environment`, resolved per-invocation. The active env is exported as **`PREMO_ENV`** (the seam user scripts and the runners read), mirroring how device choice reaches the command via `PREMO_XCODE_DEST`. An env named on the CLI that a unit doesn't define falls back to the unit's `default`-env config (a backend with no per-env split just runs the same everywhere); an xcode unit with a per-env map but no entry for the selected env errors rather than guessing a scheme.
+
+### 15.4 Per-env xcode facts
+
+A scheme is not the only env-varying fact: premo bakes `bundleId` from a scheme's build settings and uses it to **install and launch** the right app (`PREMO_XCODE_BUNDLE_ID`), and dev/prod almost always differ there (`do.odo.chess.dev` vs `do.odo.chess`). So when a project has several schemes the `xcode` block carries a per-env map, not a bare pair:
+
+```jsonc
+"xcode": {
+  "project": "ios/Chess.xcodeproj",
+  "defaultDestination": { "platform": "ios-device" },
+  "environments": {
+    "dev":  { "scheme": "Chess Dev",  "bundleId": "do.odo.chess.dev" },
+    "prod": { "scheme": "Chess Prod", "bundleId": "do.odo.chess" },
+  },
+}
+```
+
+A bare top-level `scheme` / `bundleId` remains valid and means the single-`default`-env case (normalized to a one-entry map at load), so every existing single-scheme repo keeps validating and running unchanged.
+
+### 15.5 Scope boundary (what §15 is **not**, yet)
+
+Only `dev` and `deploy` consult the env today. `build`/`test`/`lint` stay env-agnostic (a build is a build; the affected graph doesn't fork per env). Two natural follow-ons are deliberately deferred: an env selecting `.env.<env>` (the `envFile` ↔ environment tie-in), and per-env `defaultDestination`. Both slot onto this axis once it exists, without reshaping it.
 
 ## Appendix A — naming
 

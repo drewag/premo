@@ -29,18 +29,38 @@ export const XcodeDestination = z.object({
 });
 export type XcodeDestination = z.infer<typeof XcodeDestination>;
 
+// The env-varying half of an xcode unit's facts (DESIGN §15.4): which scheme to
+// build and the bundle id it installs/launches. dev/prod schemes almost always
+// differ in bundle id, so both are keyed per environment.
+export const XcodeEnv = z.object({
+  scheme: z.string(),
+  bundleId: z.string().optional(),
+});
+export type XcodeEnv = z.infer<typeof XcodeEnv>;
+
 // Xcode project facts baked by `premo adopt` so the verbs need no live
 // `xcodebuild -list` on every run. Exactly one of workspace/project is set; the
 // path is relative to the unit it belongs to (the repo root, or — for an xcode
 // package in a monorepo — that package's directory). Lives top-level for a
 // single-app repo, or on the xcode package in a monorepo (DESIGN §13.2).
-export const XcodeConfig = z.object({
-  workspace: z.string().optional(), // path to .xcworkspace
-  project: z.string().optional(), // path to .xcodeproj
-  scheme: z.string(),
-  bundleId: z.string().optional(),
-  defaultDestination: XcodeDestination.optional(),
-});
+//
+// scheme/bundleId is the single-environment case; a project that exposes several
+// schemes (the dev/prod split, §15.4) instead carries an `environments` map
+// keyed by environment name. Exactly one form is present — `pickXcodeEnv`
+// (manifest/environments) resolves the active env's pair on demand, treating a
+// bare scheme as env-agnostic.
+export const XcodeConfig = z
+  .object({
+    workspace: z.string().optional(), // path to .xcworkspace
+    project: z.string().optional(), // path to .xcodeproj
+    scheme: z.string().optional(),
+    bundleId: z.string().optional(),
+    environments: z.record(XcodeEnv).optional(), // env name → { scheme, bundleId }
+    defaultDestination: XcodeDestination.optional(),
+  })
+  .refine((c) => !!c.scheme || !!(c.environments && Object.keys(c.environments).length > 0), {
+    message: "xcode needs a `scheme` or a non-empty `environments` map",
+  });
 export type XcodeConfig = z.infer<typeof XcodeConfig>;
 
 // A predefined, premo-owned script. The `run` tag selects a runner (see
@@ -97,9 +117,20 @@ export const TargetConfig = z.object({
 });
 export type TargetConfig = z.infer<typeof TargetConfig>;
 
+// One of the project's environments — the orthogonal facet axis (DESIGN §15).
+// `default` is the env used when `--env` is omitted; `deploy` marks an env as a
+// deploy destination (the deployable set, and thus the §6.5 ref segmentation, is
+// derived from these flags rather than a separate list).
+export const Environment = z.object({
+  name: z.string(),
+  default: z.boolean().optional(),
+  deploy: z.boolean().optional(),
+});
+export type Environment = z.infer<typeof Environment>;
+
+// LEGACY (DESIGN §15.2): `deploy.envs` is migrated into `environments` at load
+// and no longer written. Kept in the schema so pre-§15 manifests still parse.
 export const DeployConfig = z.object({
-  // Single env ⇒ refs are `deployed/<target>`; multiple ⇒ `deployed/<env>/<target>`.
-  // The deploy command itself resolves through `commands.deploy` like other verbs.
   envs: z.array(z.string()).default(["prod"]),
 });
 
@@ -138,6 +169,11 @@ export const ProjectManifest = z.object({
   // The dev/deploy unit (DESIGN §13.3). Auto-seeded 1:1 from runnable/deployable
   // packages; composite targets (e.g. a compose stack) are authored.
   targets: z.array(TargetConfig).default([]),
+  // The orthogonal facet axis (DESIGN §15) — dev/prod/…, selected project-wide
+  // with `--env`. Absent/empty ⇒ one implicit env (today's behavior). One entry
+  // marks `default` (the omitted-`--env` env); `deploy: true` entries are the
+  // deploy destinations. Supersedes `deploy.envs`, which is migrated at load.
+  environments: z.array(Environment).default([]),
   changeBase: z.string().default("origin/main"),
   affectedCommand: z.string().nullable().optional(),
   deploy: DeployConfig.optional(),

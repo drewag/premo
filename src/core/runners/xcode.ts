@@ -11,14 +11,16 @@ function flag(x: XcodeConfig): string {
 
 // Generates the dev/build/test commands live from a resolved `xcode` block, so
 // the recipe lives here (versioned, upgradeable) instead of baked into config.
-// Project + scheme are stable; the per-run destination is threaded in as
-// PREMO_XCODE_DEST by the env layer (see core/xcode/env). lint/deploy aren't
+// The project path is the only stable input; the per-run destination and the
+// active environment's scheme are threaded in as PREMO_XCODE_DEST /
+// PREMO_XCODE_SCHEME by the env layer (see core/xcode/env), so the command is
+// env-agnostic and `--env` need not reach target resolution. lint/deploy aren't
 // xcode-owned (lint is swiftlint, resolved by the adapter), so they return null.
 export const xcodeRunner: Runner = {
   name: "xcode",
   command(verb, { xcode }) {
     if (!xcode) return null;
-    const c = xcodeCommands(flag(xcode), xcode.scheme);
+    const c = xcodeCommands(flag(xcode));
     switch (verb) {
       case "dev":
         return c.dev;

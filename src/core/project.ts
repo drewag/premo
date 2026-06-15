@@ -2,9 +2,23 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { ZodError } from "zod";
-import { ProjectManifest, type ProjectManifestInput } from "../manifest/types.js";
+import { ProjectManifest, type Environment, type ProjectManifestInput } from "../manifest/types.js";
 
 export const PROJECT_FILE = "premo.json";
+
+// Fold a pre-§15 `deploy.envs` list into the `environments` axis (DESIGN §15.2).
+// In-memory only — the rewrite to disk lands the next time `premo adopt` saves.
+// Only kicks in when the modern `environments` block is absent, so a hand-edited
+// or re-adopted manifest is authoritative.
+export function migrateEnvironments(m: ProjectManifest): ProjectManifest {
+  if (m.environments.length > 0 || !m.deploy?.envs?.length) return m;
+  const environments: Environment[] = m.deploy.envs.map((name, i) => ({
+    name,
+    deploy: true,
+    ...(i === 0 ? { default: true } : {}),
+  }));
+  return { ...m, environments };
+}
 
 export async function loadProject(dir: string): Promise<ProjectManifest> {
   const file = path.join(dir, PROJECT_FILE);
@@ -33,7 +47,7 @@ export async function loadProject(dir: string): Promise<ProjectManifest> {
     );
   }
   try {
-    return ProjectManifest.parse(raw);
+    return migrateEnvironments(ProjectManifest.parse(raw));
   } catch (e) {
     if (e instanceof ZodError) {
       const issues = e.issues

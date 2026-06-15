@@ -95,12 +95,16 @@ export const monorepoAdapter: Adapter = {
     return d.adapter.command(verb, d.pkg, d.pkg.cwd);
   },
 
-  // Configure tier: bake each native-app member's xcode block (scheme, bundle id,
-  // default destination — paths relative to the member dir) onto that package, so
-  // dev/build/test on it are reproducible (DESIGN §13.2). Other members need no
-  // baked config (their commands resolve live from package.json scripts).
+  // Configure tier: bake each native-app member's xcode block (scheme(s), bundle
+  // id, default destination — paths relative to the member dir) onto that package,
+  // so dev/build/test on it are reproducible (DESIGN §13.2). A member that exposes
+  // several schemes also contributes to the project's `environments` axis (§15.4);
+  // member env lists are unioned (order-preserving) into one project-wide set.
+  // Other members need no baked config (their commands resolve live from scripts).
   async adopt(root: string): Promise<Partial<ProjectManifestInput>> {
     const packages: NonNullable<ProjectManifestInput["packages"]> = [];
+    const envNames: string[] = [];
+    let defaultEnv: string | undefined;
     for (const dir of await memberDirs(root)) {
       const adapter = await childAdapterFor(dir);
       if (adapter?.name !== "xcode" || !adapter.adopt) continue;
@@ -108,7 +112,19 @@ export const monorepoAdapter: Adapter = {
       if (baked.xcode) {
         packages.push({ name: sanitizeProjectName(path.basename(dir)), xcode: baked.xcode });
       }
+      for (const e of baked.environments ?? []) {
+        if (!envNames.includes(e.name)) envNames.push(e.name);
+        if (e.default && !defaultEnv) defaultEnv = e.name;
+      }
     }
-    return packages.length > 0 ? { packages } : {};
+    if (packages.length === 0) return {};
+    const environments =
+      envNames.length > 0
+        ? envNames.map((n) => ({
+            name: n,
+            ...(n === (defaultEnv ?? envNames[0]) ? { default: true } : {}),
+          }))
+        : undefined;
+    return { packages, ...(environments ? { environments } : {}) };
   },
 };

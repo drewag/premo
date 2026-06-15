@@ -39,6 +39,7 @@ export function register(program: Command): void {
     )
     .argument("[target]", "run a single target")
     .option("--background", "run detached; manage with `premo logs` / `premo stop`")
+    .option("-e, --env <name>", "environment to run (e.g. dev | prod); see premo.json")
     .option("--device <name>", "destination device/simulator (xcode projects)")
     .option("--platform <name>", "destination platform: ios | macos | visionos (xcode projects)")
     .option("--pick", "re-prompt for the destination, ignoring the last used (xcode projects)")
@@ -48,6 +49,7 @@ export function register(program: Command): void {
         targetArg: string | undefined,
         opts: {
           background?: boolean;
+          env?: string;
           device?: string;
           platform?: string;
           pick?: boolean;
