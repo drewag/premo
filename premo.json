@@ -14,5 +14,13 @@
   "commands": {
     "dev": "sh bin/dev.sh",
     "deploy": "npm publish"
-  }
+  },
+  "targets": [
+    {
+      "name": "premo",
+      "packages": [
+        "premo"
+      ]
+    }
+  ]
 }
