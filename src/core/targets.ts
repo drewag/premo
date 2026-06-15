@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { ProjectManifest, ProjectManifestInput } from "../manifest/types.js";
 import { resolvePackages, type Package } from "./packages.js";
 import { detectPackageManager, readPackageJson } from "./adapters/node-shared.js";
@@ -123,6 +125,19 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
       ports: cfg.ports ?? existing?.ports,
       isDefault: cfg.default ?? false,
     });
+  }
+
+  // 3. Convention: a repo-level deploy script (`deploy/deploy.sh`) ships the whole
+  // project. Wire it as the deploy command for the default (or sole) target when
+  // nothing more specific resolved — the manual pattern cyclingjourneys/drewag.me
+  // already use, now picked up automatically (and baked at adopt like deploy:<name>).
+  if (existsSync(path.join(root, "deploy", "deploy.sh"))) {
+    const all = [...byName.values()];
+    const target = all.find((t) => t.isDefault) ?? (all.length === 1 ? all[0] : undefined);
+    if (target && !target.deploy) {
+      target.deploy = "./deploy/deploy.sh";
+      target.deployCwd = root;
+    }
   }
 
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));

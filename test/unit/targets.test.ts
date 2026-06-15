@@ -87,6 +87,40 @@ describe("resolveTargets — auto-seed (DESIGN §13.3)", () => {
 
     expect((await resolveTargets(root, M())).map((t) => t.name)).toEqual(["web"]);
   });
+
+  it("wires a conventional deploy/deploy.sh to the sole target when nothing else resolved", async () => {
+    const root = await tmp();
+    await pkg(root, { name: "site", scripts: { dev: "next dev", build: "next build" } });
+    await mkdir(path.join(root, "deploy"), { recursive: true });
+    await writeFile(path.join(root, "deploy", "deploy.sh"), "#!/bin/sh\necho ship\n");
+
+    const targets = await resolveTargets(root, M());
+    expect(targets).toHaveLength(1);
+    expect(targets[0]!.deploy).toBe("./deploy/deploy.sh");
+    expect(targets[0]!.deployCwd).toBe(root);
+  });
+
+  it("does not let deploy/deploy.sh override a more specific resolved deploy", async () => {
+    const root = await tmp();
+    await pkg(root, { name: "site", scripts: { dev: "next dev", deploy: "ship-it" } });
+    await mkdir(path.join(root, "deploy"), { recursive: true });
+    await writeFile(path.join(root, "deploy", "deploy.sh"), "#!/bin/sh\n");
+
+    const targets = await resolveTargets(root, M());
+    expect(targets[0]!.deploy).toBe("yarn deploy"); // package script wins
+  });
+
+  it("does not guess which target gets deploy/deploy.sh when several targets and no default", async () => {
+    const root = await tmp();
+    await mono(root);
+    await pkg(path.join(root, "api"), { name: "api", scripts: { dev: "node ." } });
+    await pkg(path.join(root, "web"), { name: "web", scripts: { dev: "vite" } });
+    await mkdir(path.join(root, "deploy"), { recursive: true });
+    await writeFile(path.join(root, "deploy", "deploy.sh"), "#!/bin/sh\n");
+
+    const targets = await resolveTargets(root, M());
+    expect(targets.every((t) => !t.deploy)).toBe(true); // ambiguous → wired to none
+  });
 });
 
 describe("resolveTargets — configured targets (DESIGN §13.4)", () => {

@@ -133,7 +133,13 @@ async function reconcilePorts(
   root: string,
   draft: ProjectManifestInput,
 ): Promise<{ block: { base: number; block: number } | null; assigned: string[] }> {
-  const xcodeNames = new Set((draft.packages ?? []).filter((p) => p.xcode).map((p) => p.name!));
+  // A package is native (xcode) — and so non-serving — either via its own `xcode`
+  // block (monorepo member) or via a top-level `xcode` block (single-app repo,
+  // where the lone package carries no per-package block). Both must skip ports.
+  const topXcode = !!draft.xcode;
+  const xcodeNames = new Set(
+    (draft.packages ?? []).filter((p) => p.xcode || topXcode).map((p) => p.name!),
+  );
   const targets = await resolveTargets(root, ProjectManifest.parse(draft));
   const serving = targets.filter((t) => servesHttp(t, xcodeNames));
   if (serving.length === 0) return { block: null, assigned: [] };

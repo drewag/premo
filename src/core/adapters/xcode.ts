@@ -81,9 +81,13 @@ export const xcodeAdapter: Adapter = {
 
     const schemes = await listSchemes(root, proj);
 
-    // Single (or no) scheme: the one-environment case — a bare scheme/bundleId.
-    if (schemes.length <= 1) {
-      const scheme = schemes.includes(proj.name) ? proj.name : (schemes[0] ?? proj.name);
+    // One scheme, or several that AREN'T environment variants (distinct products
+    // / extensions — an app + its widget, or app + API). Treat as the single,
+    // unnamed-environment case using the primary app scheme; only a genuine
+    // dev/prod-style variant set (below) seeds the environments axis.
+    if (schemes.length <= 1 || !isEnvironmentSplit(schemes)) {
+      const primary = schemes.find((s) => s.toLowerCase() === proj.name.toLowerCase());
+      const scheme = primary ?? schemes[0] ?? proj.name;
       if (schemes.length === 0) {
         log.warn(
           `No shared scheme found. Share one in Xcode (Product → Scheme → Manage Schemes → ` +
@@ -102,8 +106,8 @@ export const xcodeAdapter: Adapter = {
       });
     }
 
-    // Several shared schemes → an environment per scheme. Build settings (for the
-    // per-env bundle id, and the default env's platforms) are probed once each.
+    // Several shared schemes that ARE env variants → an environment per scheme.
+    // Build settings (per-env bundle id, default env's platforms) probed once each.
     const envByScheme = deriveEnvNames(schemes);
     const settings = new Map<string, { bundleId?: string; platforms: string[] }>();
     for (const s of schemes) settings.set(s, await buildSettings(root, proj, s));
@@ -133,6 +137,52 @@ export const xcodeAdapter: Adapter = {
     });
   },
 };
+
+// Environment-ish suffixes that mark a scheme set as a dev/prod-style variant
+// split (vs. distinct products/extensions). Conservative on purpose: an unusual
+// env name just falls back to the single-scheme case rather than inventing a
+// bogus axis (e.g. an app + widget "Glade"/"GladeControls", or app + API
+// "finances"/"api" must NOT become environments).
+const ENV_TOKENS = new Set([
+  "dev",
+  "develop",
+  "development",
+  "debug",
+  "local",
+  "prod",
+  "production",
+  "release",
+  "staging",
+  "stage",
+  "beta",
+  "qa",
+  "test",
+  "testing",
+  "alpha",
+  "adhoc",
+  "enterprise",
+  "appstore",
+  "nightly",
+  "canary",
+  "preview",
+  "demo",
+  "sandbox",
+]);
+
+// Do these shared schemes represent the same app built for different
+// environments (so they should seed the environments axis), as opposed to
+// several distinct products/extensions? True only when, after stripping the
+// shared app-name prefix, EVERY remainder is a recognized environment token —
+// "Chess Dev"/"Chess Prod" → dev/prod (yes); "Glade"/"GladeControls" → ""/
+// "controls" (no); "finances"/"api" → finances/api (no).
+export function isEnvironmentSplit(schemes: string[]): boolean {
+  if (schemes.length < 2) return false;
+  const pfx = commonPrefixLen(schemes);
+  return schemes.every((s) => {
+    const rem = sanitizeEnvName(s.slice(pfx));
+    return rem.length > 0 && ENV_TOKENS.has(rem);
+  });
+}
 
 // Derive a short env name per scheme by stripping the shared app-name prefix
 // ("Chess Dev" / "Chess Prod" → dev / prod), falling back to the sanitized full

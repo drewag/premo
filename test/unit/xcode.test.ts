@@ -34,6 +34,7 @@ import {
   xcodeCommands,
   xcodeEnvFor,
 } from "../../src/core/xcode.js";
+import { isEnvironmentSplit, deriveEnvNames } from "../../src/core/adapters/xcode.js";
 
 const mockExeca = execa as unknown as ReturnType<typeof vi.fn>;
 
@@ -420,5 +421,29 @@ describe("isDeviceLockedError", () => {
       "warning: 'foo' is deprecated",
     ];
     for (const s of samples) expect(isDeviceLockedError(s)).toBe(false);
+  });
+});
+
+describe("isEnvironmentSplit — only true dev/prod variants seed the env axis", () => {
+  it("treats env-token variants of a shared base as an environment split", () => {
+    expect(isEnvironmentSplit(["Chess Dev", "Chess Prod"])).toBe(true);
+    expect(isEnvironmentSplit(["MyApp-Debug", "MyApp-Release"])).toBe(true);
+    expect(isEnvironmentSplit(["App Dev", "App Staging", "App Prod"])).toBe(true);
+    // env names map to short tokens
+    expect([...deriveEnvNames(["Chess Dev", "Chess Prod"]).values()]).toEqual(["dev", "prod"]);
+  });
+
+  it("does NOT treat distinct products / extensions as environments", () => {
+    // app + widget extension (glade) — "" / "controls", neither an env token
+    expect(isEnvironmentSplit(["Glade", "GladeControls"])).toBe(false);
+    // app + API product (finances) — no shared prefix, neither an env token
+    expect(isEnvironmentSplit(["finances", "api"])).toBe(false);
+    // app + test scheme
+    expect(isEnvironmentSplit(["Thing", "ThingTests"])).toBe(false);
+  });
+
+  it("is false for zero or one scheme (the unnamed-environment case)", () => {
+    expect(isEnvironmentSplit([])).toBe(false);
+    expect(isEnvironmentSplit(["OnlyScheme"])).toBe(false);
   });
 });
