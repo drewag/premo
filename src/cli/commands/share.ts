@@ -11,22 +11,37 @@ export function register(program: Command): void {
   program
     .command("share")
     .description("Expose a running target's port on a public URL (via tailscale by default).")
-    .argument("[target]", "share a single target (defaults to the `dev` default target)")
+    .argument("[target]", "share a single target (defaults to the serving target)")
     .option("--via <provider>", `tunnel backend: ${providerNames().join(", ")}`)
     .option("--background", "run detached; manage with `premo logs` / `premo stop`")
     .action(async (targetArg: string | undefined, opts: { via?: string; background?: boolean }) => {
       const ctx = await ensureContext(process.cwd());
 
-      const target = await resolveShareTarget(ctx, targetArg);
-      if (!target) {
-        process.exitCode = 1;
-        return;
+      const targets = await resolveTargets(ctx.root, ctx.manifest);
+      const pick = pickShareTarget(targets, targetArg);
+      switch (pick.kind) {
+        case "unknown":
+          log.error(`No target "${targetArg}". Known: ${pick.known.join(", ") || "none"}`);
+          process.exitCode = 1;
+          return;
+        case "none":
+          log.warn("No serving target to share — `share` exposes one HTTP port.");
+          log.dim(
+            "  run `premo dev` once to allocate one, or set `ports` on a target in premo.json.",
+          );
+          process.exitCode = 1;
+          return;
+        case "ambiguous":
+          log.error(`Multiple serving targets — pick one: ${pick.choices.join(", ")}`);
+          process.exitCode = 1;
+          return;
       }
+      const target = pick.target;
 
       const port = target.ports?.base ?? ctx.manifest.ports?.base;
       if (port === undefined) {
         log.warn(`Target "${target.name}" has no port to share.`);
-        log.dim("  run `premo dev` once to allocate one, or set `ports` in premo.json.");
+        log.dim("  it isn't a standalone HTTP server (a compose stack owns its own ports).");
         process.exitCode = 1;
         return;
       }
@@ -61,30 +76,29 @@ export function register(program: Command): void {
     });
 }
 
-// Resolve the [target] to share, mirroring `dev`'s target selection so `share`
-// and `dev` accept the same names and default the same way.
-async function resolveShareTarget(
-  ctx: Context,
-  targetArg: string | undefined,
-): Promise<Target | null> {
-  const targets = await resolveTargets(ctx.root, ctx.manifest);
+export type SharePick =
+  | { kind: "ok"; target: Target }
+  | { kind: "unknown"; known: string[] } // a named target that doesn't exist
+  | { kind: "none" } // nothing serves an HTTP port premo knows
+  | { kind: "ambiguous"; choices: string[] }; // several serving targets, no default
+
+// Choose the target to share. Unlike `dev` — whose default may be a compose
+// stack with no single premo-known port — `share` needs ONE port it can funnel,
+// so with no [target] it selects among the *serving* targets (those with an
+// allocated `ports.base`): honor an explicit default if it serves, else the lone
+// serving target, else ask. A named target is taken as-is (its port is checked
+// downstream). Pure, so the selection is unit-tested without a repo.
+export function pickShareTarget(targets: Target[], targetArg?: string): SharePick {
   if (targetArg) {
     const t = targets.find((t) => t.name === targetArg);
-    if (!t) {
-      log.error(
-        `No target "${targetArg}". Known: ${targets.map((t) => t.name).join(", ") || "none"}`,
-      );
-      return null;
-    }
-    return t;
+    return t ? { kind: "ok", target: t } : { kind: "unknown", known: targets.map((t) => t.name) };
   }
-  const t = defaultTarget(targets);
-  if (!t) {
-    if (targets.length === 0) log.warn("No target to share — run `premo adopt` or add one.");
-    else log.error(`Multiple targets — pick one: ${targets.map((t) => t.name).join(", ")}`);
-    return null;
-  }
-  return t;
+  const def = defaultTarget(targets);
+  if (def?.ports?.base !== undefined) return { kind: "ok", target: def };
+  const serving = targets.filter((t) => t.ports?.base !== undefined);
+  if (serving.length === 1) return { kind: "ok", target: serving[0]! };
+  if (serving.length === 0) return { kind: "none" };
+  return { kind: "ambiguous", choices: serving.map((t) => t.name) };
 }
 
 // The public URL to surface, with the project's `openUrl` path appended so

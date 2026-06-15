@@ -465,7 +465,7 @@ premo detects packages, seeds 1:1 targets, and maps the `deploy:<name>` conventi
 share [target] [--via <provider>] [--background]
 ```
 
-- **Target-axis** (like `dev`/`deploy`). Resolves through `resolveTargets` + `defaultTarget`; the public origin proxies the target's `ports.base` (falling back to the project `ports.base`). No port allocated ⇒ the same helpful message `open` gives (run `dev`/`adopt`, or set `ports`).
+- **Target-axis** (like `dev`/`deploy`), but with a **share-specific default**, because `share` exposes _one_ port where `dev` brings up a whole stack. With no `[target]` it selects among the **serving** targets (those with an allocated `ports.base` — the set `assignTargetPorts` populates): honor an explicit `default` if it serves, else the lone serving target, else ask which. So a single-app repo shares its port with zero args (like `open`), and a compose-stack repo whose default target owns no single premo-known port still resolves to the one frontend that does. No serving target ⇒ a helpful message (run `dev`/`adopt`, or set `ports` on a target).
 - **Tunnel-only.** v1 assumes something is (or will be) listening on the port — run `premo dev` alongside. `share` does one thing: expose a port. Bringing `dev` up in the same command is a possible later `--with-dev`, deliberately deferred (it would couple `share` to the dev supervisor).
 - **Lifecycle = the §6.1 supervision layer.** Foreground by default — the tunnel runs over the inherited TTY and Ctrl-C drops it (the [premo dev lifecycle] property: foreground premo tears down what it started). `--background` detaches via `spawnDetached`, recorded in `.premo-local.json` as `share-<target>`, so `premo logs` tails it and `premo stop` ends it — the same records `dev --background` uses.
 
