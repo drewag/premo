@@ -321,7 +321,7 @@ Monorepo model (§13, supersedes the single-`targets` parts of 12/13/15 above):
 
 Environments (§15, supersedes the `deploy.envs` half of decision 15):
 
-29. **Environments are a third, orthogonal axis** (§15) — a project-wide _facet_ (dev/prod/…) selected with a global `--env`, not packages and not targets, resolved at run time so it never multiplies the target list. One canonical `environments` list is the single source of truth: `deploy: true` marks a deploy destination (the old `deploy.envs` is derived from it and migrated at load), `default` is the omitted-`--env` env, and an absent block means one implicit env (today's behavior). The active env is exported as `PREMO_ENV`. xcode units carry a per-env `{ scheme, bundleId }` map (a bare `scheme`/`bundleId` is the one-env case); only `dev`/`deploy` consult the env so far — `build`/`test`/`lint` stay env-agnostic.
+29. **Environments are a third, orthogonal axis** (§15) — a project-wide _facet_ (dev/prod/…) selected with a global `--env`, not packages and not targets, resolved at run time so it never multiplies the target list. One canonical `environments` list is the single source of truth: `deploy: true` marks a deploy destination (the old `deploy.envs` is derived from it and migrated at load), `default` is the omitted-`--env` env, and an absent block means one implicit env (today's behavior). The active env is exported as `PREMO_ENV` and selects a `.env.<env>` dotenv overlay over the base `envFile` (§15.5). xcode units carry a per-env `{ scheme, bundleId }` map (a bare `scheme`/`bundleId` is the one-env case). `dev`/`build`/`test`/`deploy` consult the env; `lint` stays env-agnostic.
 
 ---
 
@@ -571,9 +571,15 @@ A scheme is not the only env-varying fact: premo bakes `bundleId` from a scheme'
 
 A bare top-level `scheme` / `bundleId` remains valid and means the single-`default`-env case (normalized to a one-entry map at load), so every existing single-scheme repo keeps validating and running unchanged.
 
-### 15.5 Scope boundary (what §15 is **not**, yet)
+### 15.5 Per-env env files (the `envFile` ↔ environment tie-in)
 
-Only `dev` and `deploy` consult the env today. `build`/`test`/`lint` stay env-agnostic (a build is a build; the affected graph doesn't fork per env). Two natural follow-ons are deliberately deferred: an env selecting `.env.<env>` (the `envFile` ↔ environment tie-in), and per-env `defaultDestination`. Both slot onto this axis once it exists, without reshaping it.
+The env-varying fact for a **non-xcode** unit is usually config, not a build flag: a finance app's Plaid sandbox vs production keys, a different API base, a per-env secret. So the active env selects a dotenv **overlay**: `dev`/`build`/`test` load the base `envFile` (`.env`) and then layer `.env.<env>` on top (the overlay wins; the real shell env still wins over both). `premo dev --env production` ⇒ `.env` + `.env.production`. This is the seam that makes the axis do real work for node/monorepo repos, not just inject a `PREMO_ENV` string.
+
+`premo adopt` **detects** this the way it detects xcode schemes: `.env.<env>` overlay files next to the base env file seed the `environments` axis (ignoring `.env.example`/`.local`/etc.), picking a dev-ish `default` and marking prod-ish envs `deploy: true`, unioned with any xcode-derived envs.
+
+### 15.6 Scope boundary (what §15 is **not**, yet)
+
+`dev`/`build`/`test`/`deploy` consult the env (for the `.env.<env>` overlay, `PREMO_ENV`, and — for native apps — the per-env scheme/bundleId); `lint` stays env-agnostic, and the affected graph never forks per env. Two follow-ons remain deferred: **per-env command / deploy-host overrides** (an env varying the actual build/deploy command, not just its env vars — no repo needs it yet), and per-env `defaultDestination`. Both slot onto this axis without reshaping it.
 
 ## Appendix A — naming
 
