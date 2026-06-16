@@ -20,6 +20,9 @@ export interface DetectedPackage {
   // the project/workspace path + a guessed scheme — enough for destination
   // resolution to engage so `dev`/`build`/`test` work on a freshly-detected app.
   xcode?: XcodeConfig;
+  // A pre-build hook the adapter detected (e.g. `xcodegen generate` when the
+  // project is generated from a project.yml). Composed before dev/build/test.
+  prebuild?: string;
 }
 
 export interface Adapter {

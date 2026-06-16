@@ -32,3 +32,22 @@ export async function findXcodeProject(root: string): Promise<XcodeProject | nul
 export function projectFlag(p: XcodeProject): string {
   return `${p.kind === "workspace" ? "-workspace" : "-project"} ${shq(p.path)}`;
 }
+
+// The pre-build command for a GENERATED Xcode project, or null if the project
+// isn't generated from a spec. xcodegen materializes the .xcodeproj from a
+// `project.yml` (commonly gitignored), so it must be (re)generated before any
+// xcodebuild — the xcode adapter wires this as the unit's `prebuild` hook.
+// Detected by xcodegen's canonical spec filename next to the project. (Tuist's
+// Project.swift / a Makefile generate step can extend this list later.)
+export const XCODEGEN_PREBUILD = "xcodegen generate";
+
+export async function detectGeneratorPrebuild(root: string): Promise<string | null> {
+  try {
+    const entries = await readdir(root);
+    if (entries.includes("project.yml") || entries.includes("project.yaml"))
+      return XCODEGEN_PREBUILD;
+  } catch {
+    // unreadable dir → no detectable generator
+  }
+  return null;
+}

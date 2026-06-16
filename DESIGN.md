@@ -464,6 +464,27 @@ Reading it: `premo dev` → the `stack` (compose: `db+redis+qdrant+backend+worke
 
 premo detects packages, seeds 1:1 targets, and maps the `deploy:<name>` convention — but it does **not** try to auto-infer a repo's _topology_ (which compose service is infra, who wires to whom). That wiring (the composite `dev` targets) is confirmed by AI/human. This is the line that keeps premo from needing either magic or a config DSL, and it's exactly where "reasonable to require AI to wire up a complex repo" lands.
 
+### 13.8 Pre-build hook (`prebuild`)
+
+Some projects must run a step **before** they can be built or run — most commonly a code generator that materializes the buildable artifact from a spec: `xcodegen generate` (the `.xcodeproj` is generated, often gitignored), a protobuf/codegen pass, or a sibling payload an app launches against (e.g. `yarn package`). `prebuild` is a shell command, declared per-package or project-level, that premo runs (in the unit's cwd, with the run env) **immediately before** that unit's `dev` / `build` / `test` command, gating it on success:
+
+```jsonc
+{
+  "packages": [
+    {
+      "name": "ios",
+      "xcode": { "project": "App.xcodeproj", "scheme": "App" },
+      "prebuild": "xcodegen generate",
+    },
+  ],
+}
+```
+
+- **Scope:** `dev`, `build`, `test` only — the build-ish verbs that compile/run the project. `lint` and `deploy` don't (re)build it, so they aren't prefixed.
+- **Composition:** the command becomes `<prebuild> && { <verb-command> }` — a brace group (not a subshell), so an `exec` in the verb command (the xcode `dev` recipe that becomes the running app) still replaces the shell directly, preserving the SIGTERM-kills-the-app property §6.1 relies on. Every run path (`dev`/`build`/`test`/supervise) inherits it for free because it's composed at command-resolution time (`resolvePackages`).
+- **Precedence:** per-package `prebuild` > adapter-detected > project-level — the same order as the `xcode` block.
+- **Auto-detection:** the xcode adapter detects a generated project by its generator spec (`project.yml` / `project.yaml` → xcodegen) and bakes `prebuild: "xcodegen generate"` at adopt, the same way it bakes an editable `lint: swiftlint`. (Detection currently requires the `.xcodeproj` to already exist for the project to be recognized at all — a first-run `xcodegen generate` on a never-generated checkout is a follow-up.)
+
 ---
 
 ## 14. `share` — public tunnels (a utility command)

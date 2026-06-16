@@ -27,6 +27,7 @@ import {
   writeLastXcodeDest,
 } from "../../src/core/local.js";
 import {
+  detectGeneratorPrebuild,
   findXcodeProject,
   isDeviceLockedError,
   listPhysicalDevices,
@@ -217,6 +218,49 @@ describe("resolveDestination", () => {
     await expect(resolveDestination({ xcode: undefined, interactive: false })).rejects.toThrow(
       /No destination to run on/,
     );
+  });
+});
+
+describe("xcodegen detection → prebuild hook", () => {
+  it("detects xcodegen by its spec file (project.yml / project.yaml)", async () => {
+    const root = await tmp();
+    expect(await detectGeneratorPrebuild(root)).toBeNull();
+    await writeFile(path.join(root, "project.yml"), "name: Awooga\n");
+    expect(await detectGeneratorPrebuild(root)).toBe("xcodegen generate");
+
+    const root2 = await tmp();
+    await writeFile(path.join(root2, "project.yaml"), "name: Awooga\n");
+    expect(await detectGeneratorPrebuild(root2)).toBe("xcodegen generate");
+  });
+
+  it("packages() carries a prebuild hook for a generated project, and none otherwise", async () => {
+    const plain = await tmp();
+    await mkdir(path.join(plain, "Awooga.xcodeproj"));
+    expect((await xcodeAdapter.packages(plain))[0]!.prebuild).toBeUndefined();
+
+    const gen = await tmp();
+    await mkdir(path.join(gen, "Awooga.xcodeproj"));
+    await writeFile(path.join(gen, "project.yml"), "name: Awooga\n");
+    expect((await xcodeAdapter.packages(gen))[0]!.prebuild).toBe("xcodegen generate");
+  });
+
+  it("adopt() bakes the prebuild hook next to the xcode block for a generated project", async () => {
+    stubSimctl(); // xcodebuild -list/-showBuildSettings → empty (scheme falls back to project name)
+    const root = await tmp();
+    await mkdir(path.join(root, "Awooga.xcodeproj"));
+    await writeFile(path.join(root, "project.yml"), "name: Awooga\n");
+
+    const baked = await xcodeAdapter.adopt!(root);
+    expect(baked.prebuild).toBe("xcodegen generate");
+    expect(baked.xcode).toMatchObject({ project: "Awooga.xcodeproj" });
+  });
+
+  it("adopt() omits prebuild for a hand-maintained (non-generated) project", async () => {
+    stubSimctl();
+    const root = await tmp();
+    await mkdir(path.join(root, "Awooga.xcodeproj"));
+    const baked = await xcodeAdapter.adopt!(root);
+    expect(baked.prebuild).toBeUndefined();
   });
 });
 

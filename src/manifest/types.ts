@@ -90,6 +90,13 @@ export const PackageConfig = z.object({
   affectsExcept: z.array(z.string()).default([]),
   commands: z.record(Script).default({}),
   xcode: XcodeConfig.optional(),
+  // A pre-build hook: a shell command run (in the unit's cwd, with the run env)
+  // immediately before this unit's `dev`/`build`/`test` command, gating it on
+  // success. For code generators that materialize the buildable project from a
+  // spec — e.g. `xcodegen generate` (baked by the xcode adapter when it sees a
+  // project.yml), a protobuf/codegen step, or a `yarn package` that an app
+  // launches against. NOT run for lint/deploy. See DESIGN §13.8.
+  prebuild: z.string().optional(),
 });
 export type PackageConfig = z.infer<typeof PackageConfig>;
 
@@ -181,6 +188,9 @@ export const ProjectManifest = z.object({
   share: ShareConfig.optional(),
   // Present when the xcode adapter has adopted this project.
   xcode: XcodeConfig.optional(),
+  // Project-level pre-build hook (the single-unit case, e.g. a single-app xcode
+  // repo). Same semantics as PackageConfig.prebuild; a per-package value wins.
+  prebuild: z.string().optional(),
   worktree: z.object({ carry: z.array(z.string()).default([]) }).optional(),
 });
 export type ProjectManifest = z.infer<typeof ProjectManifest>;

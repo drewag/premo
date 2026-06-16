@@ -9,6 +9,19 @@ import { resolveScript } from "./runners/index.js";
 const XCODE_VERBS = new Set<Verb>(["dev", "build", "test"]);
 const XCODE_SPEC: Script = { run: "xcode" };
 
+// Verbs a `prebuild` hook precedes — the build-ish verbs that materialize/compile
+// or run the project. lint/deploy are excluded (they don't (re)build it).
+const PREBUILD_VERBS = new Set<Verb>(["dev", "build", "test"]);
+
+// Compose a unit's pre-build hook in front of a verb command: run the hook, and
+// only on success run the command. A brace group (not a subshell) keeps the
+// command in the SAME shell, so an `exec` inside it (the xcode dev recipe that
+// becomes the running app) still replaces this process — preserving the
+// SIGTERM-kills-the-app property `dev` relies on.
+export function withPrebuild(prebuild: string, cmd: string): string {
+  return `${prebuild} && {\n${cmd}\n}`;
+}
+
 // A fully-resolved package: where to run, what it owns (for affected detection),
 // and the concrete command for each verb (config > adapter). The build/test/lint
 // unit; see DESIGN.md §13.
@@ -56,6 +69,10 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
     // native app not yet adopted), then a single-app repo's top-level block.
     // Drives the implied xcode runner *and* destination resolution downstream.
     const xcode = cfg?.xcode ?? det?.xcode ?? manifest.xcode;
+    // Pre-build hook, same precedence as xcode: per-package config > adapter
+    // detection (e.g. xcodegen) > project-level config. Composed before the
+    // build-ish verbs below so every run path (dev/build/test/supervise) gets it.
+    const prebuild = cfg?.prebuild ?? det?.prebuild ?? manifest.prebuild;
 
     const commands: Partial<Record<Verb, string>> = {};
     for (const verb of VERBS) {
@@ -73,7 +90,8 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
           : det && adapter
             ? ((await adapter.command(verb, det, root)) ?? undefined)
             : undefined;
-      if (cmd) commands[verb] = cmd;
+      if (cmd)
+        commands[verb] = prebuild && PREBUILD_VERBS.has(verb) ? withPrebuild(prebuild, cmd) : cmd;
     }
 
     packages.push({
@@ -97,7 +115,12 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
     for (const verb of VERBS) {
       const s = manifest.commands[verb];
       const cmd = s !== undefined ? resolveScript(s, verb, {}) : undefined;
-      if (cmd) commands[verb] = cmd;
+      if (cmd) {
+        commands[verb] =
+          manifest.prebuild && PREBUILD_VERBS.has(verb)
+            ? withPrebuild(manifest.prebuild, cmd)
+            : cmd;
+      }
     }
     packages.push({
       name: manifest.name,

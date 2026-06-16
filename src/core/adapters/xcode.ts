@@ -5,6 +5,7 @@ import { sanitizeProjectName } from "../project.js";
 import { log } from "../logger.js";
 import {
   buildSettings,
+  detectGeneratorPrebuild,
   findXcodeProject,
   listSchemes,
   pickDefaultDestination,
@@ -37,7 +38,19 @@ export const xcodeAdapter: Adapter = {
       proj.kind === "workspace"
         ? { workspace: proj.path, scheme: proj.name }
         : { project: proj.path, scheme: proj.name };
-    return [{ name: sanitizeProjectName(proj.name), dirs: ["."], cwd: root, scripts: {}, xcode }];
+    // A generated project (xcodegen) must be regenerated before xcodebuild —
+    // surface it as a prebuild hook even pre-adopt, so dev/build/test work.
+    const prebuild = (await detectGeneratorPrebuild(root)) ?? undefined;
+    return [
+      {
+        name: sanitizeProjectName(proj.name),
+        dirs: ["."],
+        cwd: root,
+        scripts: {},
+        xcode,
+        ...(prebuild ? { prebuild } : {}),
+      },
+    ];
   },
 
   // Best-effort live commands (used for the `doctor` preview before adopt bakes
@@ -76,8 +89,15 @@ export const xcodeAdapter: Adapter = {
     // materialized.
     const commands: Record<string, string> = {};
     if (existsSync(path.join(root, ".swiftlint.yml"))) commands.lint = "swiftlint";
-    const withCommands = (m: Partial<ProjectManifestInput>): Partial<ProjectManifestInput> =>
-      Object.keys(commands).length ? { ...m, commands } : m;
+    // A generated project (xcodegen) gets a baked `prebuild` so the .xcodeproj is
+    // (re)generated before every dev/build/test — like the editable `lint`
+    // string, this is a genuinely project-specific command worth materializing.
+    const prebuild = (await detectGeneratorPrebuild(root)) ?? undefined;
+    const withCommands = (m: Partial<ProjectManifestInput>): Partial<ProjectManifestInput> => ({
+      ...m,
+      ...(Object.keys(commands).length ? { commands } : {}),
+      ...(prebuild ? { prebuild } : {}),
+    });
 
     const schemes = await listSchemes(root, proj);
 
