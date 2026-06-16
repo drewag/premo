@@ -58,7 +58,7 @@ The closed P0 set. Each verb takes an optional `[target]` (a named sub-unit of a
 
 **Scope granularity is deliberately split:** `build`/`test`/`deploy` operate at **target** granularity (rebuild/retest/ship a whole unit if any of its files changed); `lint` operates at **file** granularity (lint exactly the changed files). This mirrors `odo/email` and matches how the tools actually work — eslint takes a file list, but you can't "build half a target."
 
-Utility commands alongside the core verbs (secondary): `doctor`, `adopt`, `ports`, `open`, `shell`, `share` (§14).
+Utility commands alongside the core verbs (secondary): `doctor`, `adopt`, `ports`, `open`, `shell`, `share`, `skill`, `guide` (§14).
 
 ---
 
@@ -87,6 +87,15 @@ Every project reaches "the verbs work here" through one of three tiers, escalati
 ### Coverage as a finite matrix
 
 premo's job is to cover a matrix of **(verb × project-type)**. Every cell is handled by tier 1, 2, or 3. This reframes "contributing back" from the old open-ended "build every useful component" into something finishable: **fill in coverage of a finite matrix**, and the ratchet turns one way only — when the _skill_ tier solves a new case with an agent, that solution is a candidate for **promotion**: up into the configurator if it generalizes mechanically, or into a built-in adapter if it's a whole stack. Skill → Configure → Convention.
+
+### Discovery: making agents reach for premo
+
+The three tiers get the verbs _working_; discovery gets them _used_. A coding agent dropped into an already-adopted repo won't lean on premo unless it's told to — left to itself it invents bespoke commands, adds packages without re-adopting, and can't answer questions about premo. So `premo adopt` plants the knowledge where an agent always sees it, split by lifetime:
+
+- **Always in context — the reflex.** A marker-delimited block (`<!-- premo:start … -->`) in **`AGENTS.md`** (the cross-tool agent-instructions standard) says "this repo is premo-managed," lists the resolved verbs, and points onward. Managed with the same discipline as the adopt merge — fill/replace only between the markers, never touch the user's prose, byte-stable on re-run. If no `CLAUDE.md` exists, a one-line `@AGENTS.md` import is dropped so the `claude` CLI (which auto-loads `CLAUDE.md`) discovers it too; an existing `CLAUDE.md` is never touched. Implemented in `core/agents-doc.ts`, called from `adoptProject`/`syncProject`.
+- **On demand — the manual.** **`premo guide`** prints the full reference (vocabulary + this repo's resolved verbs), generated from the installed binary so it's never stale and nothing large is committed per-repo. The block points here for anything beyond the reflex.
+
+This is the mirror of the skill tier: skill teaches an agent to _finish wiring_ an unadopted repo; discovery teaches an agent to _use_ an adopted one.
 
 ---
 

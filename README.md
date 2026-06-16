@@ -22,7 +22,7 @@ premo is designed to be driven by **coding agents** as much as by humans — and
 
 - **A closed, predictable vocabulary.** Five verbs, identical semantics in every repo. Nothing for an agent to discover or get wrong.
 - **Machine-readable output.** `premo doctor --json`, `premo adopt --json`, and `premo ports --json` emit stable JSON so an agent can see exactly what's wired and what's missing without scraping human text.
-- **A repo-level [`AGENTS.md`](./AGENTS.md)** teaches an agent the vocabulary and when to reach for premo.
+- **Adoption plants discovery.** `premo adopt` writes a managed block into the repo's `AGENTS.md` (and a `CLAUDE.md` `@AGENTS.md` import if absent) telling an agent the repo is premo-managed, listing the resolved verbs, and pointing to **`premo guide`** for the full reference. So an agent reaches for premo verbs instead of inventing bespoke commands.
 - **An agent-executed adoption tier.** When a repo is too novel for the built-in detectors, premo emits a `SKILL.md` that teaches a coding agent how to wire premo up for that stack (the "skill tier" in [DESIGN.md §3](./DESIGN.md)).
 
 Humans get muscle memory; agents get a contract. Both press the same buttons.

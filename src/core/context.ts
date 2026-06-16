@@ -13,6 +13,7 @@ import { detectAdapter } from "./adapters/index.js";
 import { readPackageJson } from "./adapters/node-shared.js";
 import { resolveTargets, toTargetConfig, servesHttp, PORT_STEP } from "./targets.js";
 import { ensurePremoGitignore } from "./local.js";
+import { ensureAgentsDoc, AGENTS_FILE } from "./agents-doc.js";
 import { gitRoot } from "./git.js";
 import { allocatePortBlock } from "./port-registry.js";
 import { DEFAULT_BLOCK } from "./ports.js";
@@ -246,12 +247,15 @@ export async function adoptProject(
   const manifest = ProjectManifest.parse(draft); // validate
   await saveProject(root, draft); // write the clean, un-defaulted version
   await ensurePremoGitignore(root); // keep premo-local state out of git
+  const doc = await ensureAgentsDoc(root); // teach coding agents to use premo here
 
   const detail = adapterName
     ? `detected ${adapterName}, ${packageCount} target(s)`
     : "no adapter matched";
   if (!quiet) {
     log.ok(`wrote ${PROJECT_FILE} — ${detail}${portInfo}`);
+    if (doc.agentsChanged) log.dim(`  refreshed ${AGENTS_FILE} so coding agents reach for premo`);
+    if (doc.claudeCreated) log.dim("  created CLAUDE.md → @AGENTS.md (so `claude` discovers it)");
     if (!adapterName) {
       log.dim('  no commands resolved yet; add them under "commands" in premo.json,');
       log.dim("  or run `premo skill` to generate a task file for a coding agent.");
@@ -265,6 +269,7 @@ export interface SyncResult {
   changes: AdoptChanges;
   stale: AdoptStale;
   changed: boolean;
+  agentsChanged: boolean; // the AGENTS.md discovery block was (re)written
 }
 
 // Non-destructive re-adopt: fold newly-detected features into the existing
@@ -281,10 +286,19 @@ export async function syncProject(root: string): Promise<SyncResult> {
   const { assigned } = await reconcilePorts(root, merged);
 
   const manifest = ProjectManifest.parse(merged); // validate before write
-  const changed = !changesEmpty(changes) || assigned.length > 0;
-  if (changed) {
+  const manifestChanged = !changesEmpty(changes) || assigned.length > 0;
+  if (manifestChanged) {
     await saveProject(root, merged);
     await ensurePremoGitignore(root);
   }
-  return { manifest, changes, stale, changed };
+  // Refresh the agent docs against whatever's now on disk — even when the manifest
+  // itself didn't change, this is how an already-adopted repo first gains the block.
+  const doc = await ensureAgentsDoc(root);
+  return {
+    manifest,
+    changes,
+    stale,
+    changed: manifestChanged || doc.agentsChanged || doc.claudeCreated !== null,
+    agentsChanged: doc.agentsChanged,
+  };
 }

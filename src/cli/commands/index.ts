@@ -13,6 +13,7 @@ import { register as open } from "./open.js";
 import { register as share } from "./share.js";
 import { register as shell } from "./shell.js";
 import { register as skill } from "./skill.js";
+import { register as guide } from "./guide.js";
 import { register as completion } from "./completion.js";
 
 // The single source of truth for which commands exist. Both bin/premo.ts and the
@@ -33,5 +34,6 @@ export const COMMANDS: RegisterFn[] = [
   share,
   shell,
   skill,
+  guide,
   completion,
 ];

@@ -6,7 +6,7 @@ import { log } from "../../core/logger.js";
 
 // A scannable one-liner for what an additive sync added, e.g.
 // "added target web; xcode env staging; filled deploy on api".
-function summarize({ changes }: SyncResult): string {
+function summarize({ changes, agentsChanged }: SyncResult): string {
   const parts: string[] = [];
   const added = [
     ...changes.packages.map((n) => `package ${n}`),
@@ -17,6 +17,7 @@ function summarize({ changes }: SyncResult): string {
   if (added.length) parts.push(`added ${added.join(", ")}`);
   const filled = [...changes.fields, ...changes.packageFields, ...changes.targetFields];
   if (filled.length) parts.push(`filled ${filled.join(", ")}`);
+  if (agentsChanged) parts.push("refreshed AGENTS.md");
   return parts.join("; ") || "updated";
 }
 
@@ -42,6 +43,7 @@ export function register(program: Command): void {
             adopted: true,
             mode: "sync",
             changed: result.changed,
+            agentsChanged: result.agentsChanged,
             root: existing,
             file: PROJECT_FILE,
             added: {
