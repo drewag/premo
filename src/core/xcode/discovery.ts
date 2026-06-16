@@ -1,4 +1,5 @@
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { shq } from "../shell.js";
 
 // Locating the .xcodeproj / .xcworkspace at a repo root.
@@ -8,6 +9,11 @@ export interface XcodeProject {
   path: string; // basename relative to root, e.g. "Awooga.xcodeproj"
   name: string; // without extension, e.g. "Awooga"
 }
+
+// xcodegen's spec filenames. Their presence marks a GENERATED project: the
+// .xcodeproj is materialized from the spec (and commonly gitignored), so it may
+// be absent on a fresh checkout and must be (re)generated before any xcodebuild.
+const XCODEGEN_SPECS = ["project.yml", "project.yaml"];
 
 function pick(entries: string[]): XcodeProject | null {
   // A workspace, when present at the root, is xcodebuild's entry point (it wraps
@@ -20,12 +26,35 @@ function pick(entries: string[]): XcodeProject | null {
   return null;
 }
 
+// XcodeGen's top-level `name:` (the generated .xcodeproj's basename). A column-0
+// key so a nested `name:` (under targets/schemes) never matches; quotes stripped.
+function parseSpecName(text: string): string | null {
+  const m = text.match(/^name:[ \t]*(.+?)[ \t]*$/m);
+  return m ? m[1].replace(/^["']|["']$/g, "").trim() || null : null;
+}
+
 export async function findXcodeProject(root: string): Promise<XcodeProject | null> {
+  let entries: string[];
   try {
-    return pick(await readdir(root));
+    entries = await readdir(root);
   } catch {
     return null;
   }
+  const built = pick(entries);
+  if (built) return built;
+  // No built project — recognize a generator spec so a never-generated checkout
+  // is still detected as an Xcode app; the `prebuild` hook regenerates the
+  // .xcodeproj before any xcodebuild. The project name comes from the spec.
+  const spec = entries.find((e) => XCODEGEN_SPECS.includes(e));
+  if (spec) {
+    try {
+      const name = parseSpecName(await readFile(path.join(root, spec), "utf8"));
+      if (name) return { kind: "project", path: `${name}.xcodeproj`, name };
+    } catch {
+      // unreadable spec → not detectable
+    }
+  }
+  return null;
 }
 
 // The `-workspace X` / `-project X` flag pair for xcodebuild invocations.
@@ -35,17 +64,15 @@ export function projectFlag(p: XcodeProject): string {
 
 // The pre-build command for a GENERATED Xcode project, or null if the project
 // isn't generated from a spec. xcodegen materializes the .xcodeproj from a
-// `project.yml` (commonly gitignored), so it must be (re)generated before any
-// xcodebuild — the xcode adapter wires this as the unit's `prebuild` hook.
-// Detected by xcodegen's canonical spec filename next to the project. (Tuist's
-// Project.swift / a Makefile generate step can extend this list later.)
+// `project.yml`, so it must be (re)generated before any xcodebuild — the xcode
+// adapter wires this as the unit's `prebuild` hook. (Tuist's Project.swift / a
+// Makefile generate step can extend this list later.)
 export const XCODEGEN_PREBUILD = "xcodegen generate";
 
 export async function detectGeneratorPrebuild(root: string): Promise<string | null> {
   try {
     const entries = await readdir(root);
-    if (entries.includes("project.yml") || entries.includes("project.yaml"))
-      return XCODEGEN_PREBUILD;
+    if (entries.some((e) => XCODEGEN_SPECS.includes(e))) return XCODEGEN_PREBUILD;
   } catch {
     // unreadable dir → no detectable generator
   }

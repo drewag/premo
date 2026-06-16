@@ -262,6 +262,42 @@ describe("xcodegen detection → prebuild hook", () => {
     const baked = await xcodeAdapter.adopt!(root);
     expect(baked.prebuild).toBeUndefined();
   });
+
+  // Fresh checkout: the .xcodeproj hasn't been generated yet (it's gitignored),
+  // so detection falls back to the spec, reading the project name from it. The
+  // prebuild hook then generates the project before xcodebuild.
+  it("detects a never-generated project from its spec (no .xcodeproj on disk)", async () => {
+    const root = await tmp();
+    await writeFile(
+      path.join(root, "project.yml"),
+      "name: Awooga\noptions:\n  bundleIdPrefix: com.x\n",
+    );
+    expect(await findXcodeProject(root)).toEqual({
+      kind: "project",
+      path: "Awooga.xcodeproj",
+      name: "Awooga",
+    });
+    expect(await xcodeAdapter.detect(root)).toBe(true);
+    const [pkg] = await xcodeAdapter.packages(root);
+    expect(pkg!.xcode).toEqual({ project: "Awooga.xcodeproj", scheme: "Awooga" });
+    expect(pkg!.prebuild).toBe("xcodegen generate");
+  });
+
+  it("reads the top-level spec name (quoted, ignoring nested name: keys)", async () => {
+    const root = await tmp();
+    await writeFile(
+      path.join(root, "project.yml"),
+      'name: "My App"\ntargets:\n  Widget:\n    name: ShouldNotWin\n',
+    );
+    expect((await findXcodeProject(root))!.name).toBe("My App");
+  });
+
+  it("a built .xcodeproj still wins over the spec (no name parsing needed)", async () => {
+    const root = await tmp();
+    await mkdir(path.join(root, "Built.xcodeproj"));
+    await writeFile(path.join(root, "project.yml"), "name: FromSpec\n");
+    expect((await findXcodeProject(root))!.name).toBe("Built");
+  });
 });
 
 describe("monorepo per-package xcode (adopt)", () => {
