@@ -80,6 +80,9 @@ export const monorepoAdapter: Adapter = {
         // stays relative to the member dir (= this package's cwd), so the xcode
         // runner's `-project`/`-workspace` resolves from the dir the verb runs in.
         ...(childPkg.xcode ? { xcode: childPkg.xcode } : {}),
+        // …and any pre-build hook the leaf detected (e.g. xcodegen generate),
+        // which also runs in this package's cwd before dev/build/test.
+        ...(childPkg.prebuild ? { prebuild: childPkg.prebuild } : {}),
       };
       delegates.set(pkg, { adapter, pkg: childPkg });
       result.push(pkg);
@@ -110,7 +113,11 @@ export const monorepoAdapter: Adapter = {
       if (adapter?.name !== "xcode" || !adapter.adopt) continue;
       const baked = await adapter.adopt(dir);
       if (baked.xcode) {
-        packages.push({ name: sanitizeProjectName(path.basename(dir)), xcode: baked.xcode });
+        packages.push({
+          name: sanitizeProjectName(path.basename(dir)),
+          xcode: baked.xcode,
+          ...(baked.prebuild ? { prebuild: baked.prebuild } : {}),
+        });
       }
       for (const e of baked.environments ?? []) {
         if (!envNames.includes(e.name)) envNames.push(e.name);

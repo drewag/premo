@@ -312,6 +312,23 @@ describe("monorepo per-package xcode (adopt)", () => {
       name: "ios",
       xcode: { project: "App.xcodeproj", scheme: "App" },
     });
+    expect(baked.packages![0]!.prebuild).toBeUndefined(); // hand-maintained member → no hook
+  });
+
+  it("carries a generated member's prebuild hook up to the package (packages() + adopt())", async () => {
+    stubSimctl();
+    const root = await tmp();
+    await mkdir(path.join(root, "ios", "App.xcodeproj"), { recursive: true });
+    await writeFile(path.join(root, "ios", "project.yml"), "name: App\n");
+
+    // live detection (pre-adopt)
+    const [pkg] = await monorepoAdapter.packages(root);
+    expect(pkg!.name).toBe("ios");
+    expect(pkg!.prebuild).toBe("xcodegen generate");
+
+    // baked (adopt)
+    const baked = await monorepoAdapter.adopt!(root);
+    expect(baked.packages![0]).toMatchObject({ name: "ios", prebuild: "xcodegen generate" });
   });
 });
 
