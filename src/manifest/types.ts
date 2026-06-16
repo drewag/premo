@@ -90,6 +90,12 @@ export const PackageConfig = z.object({
   affectsExcept: z.array(z.string()).default([]),
   commands: z.record(Script).default({}),
   xcode: XcodeConfig.optional(),
+  // Inline env vars for THIS package's verb runs, overriding the project-level
+  // `env` and the `envFile`. Gap-filled like the env file (an explicitly-exported
+  // shell var still wins), and applied per-package: a composite `dev` target's
+  // members each get their own. For non-secret, per-package config — e.g. a
+  // desktop shell's ORCH_SERVICE_DIR. Secrets still belong in the envFile / vault.
+  env: z.record(z.string()).optional(),
   // A pre-build hook: a shell command run (in the unit's cwd, with the run env)
   // immediately before this unit's `dev`/`build`/`test` command, gating it on
   // success. For code generators that materialize the buildable project from a
@@ -167,6 +173,11 @@ export const ProjectManifest = z.object({
   // as ".env" on adopt; set to another path, or null to disable. Real env vars
   // and premo's own injections (e.g. $PORT) take precedence.
   envFile: z.string().nullable().optional(),
+  // Project-global inline env vars for verb runs, layered over the `envFile` and
+  // under any per-package `env` (PackageConfig.env). Gap-filled — a real exported
+  // shell var still wins. For non-secret config you'd rather keep in premo.json
+  // than a dotenv; secrets belong in the envFile / vault.
+  env: z.record(z.string()).optional(),
   // Named interactive shells (e.g. `db` → psql).
   shells: z.record(ShellSpec).default({}),
   commands: z.record(Script).default({}),

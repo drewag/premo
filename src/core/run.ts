@@ -4,7 +4,7 @@ import type { Context } from "./context.js";
 import { resolvePackages, type Package } from "./packages.js";
 import { changedFiles } from "./git.js";
 import { affectedPackages } from "./affected.js";
-import { envFileVars } from "./env.js";
+import { configEnv, envFileVars } from "./env.js";
 import { log } from "./logger.js";
 
 export interface VerbOptions {
@@ -110,7 +110,9 @@ export async function runVerb(ctx: Context, verb: Verb, opts: VerbOptions): Prom
       shell: true,
       stdio: "inherit",
       reject: false,
-      env: { ...fileVars, ...opts.env },
+      // envFile < project `env` < this package's `env` (configEnv); execa layers
+      // it over the inherited process.env, with premo's injected vars on top.
+      env: { ...configEnv(fileVars, ctx.manifest.env, p.env), ...opts.env },
     });
     if (res.exitCode !== 0) {
       log.error(`${verb} ${p.name} failed (exit ${res.exitCode}).`);

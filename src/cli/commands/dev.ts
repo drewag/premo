@@ -5,7 +5,7 @@ import readline from "node:readline";
 import pc from "picocolors";
 import { ensureContext, type Context } from "../../core/context.js";
 import { resolveTargets, defaultTarget, type DevProc } from "../../core/targets.js";
-import { envFileVars } from "../../core/env.js";
+import { configEnv, envFileVars } from "../../core/env.js";
 import { spawnDetached } from "../../core/supervise.js";
 import { shq } from "../../core/shell.js";
 import { installFooter, type Footer } from "../../core/footer.js";
@@ -116,13 +116,19 @@ async function runAdoptedDev(
     ctx.manifest.envFile ?? undefined,
     extraEnv?.PREMO_ENV,
   );
-  const env: NodeJS.ProcessEnv = { ...process.env, ...fileVars, ...extraEnv };
   const portBase = target.ports?.base ?? ctx.manifest.ports?.base;
 
   // Each process binds its OWN port (a composite target runs several dev servers
-  // at once), falling back to the target/project base for a single server.
+  // at once), falling back to the target/project base for a single server. Env is
+  // resolved PER-PROC so each member of a composite target gets its own
+  // PackageConfig.env layered over the project `env` + envFile (configEnv).
   const portFor = (r: DevProc): number | undefined => r.port ?? portBase;
   const envFor = (r: DevProc): NodeJS.ProcessEnv => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...configEnv(fileVars, ctx.manifest.env, r.env),
+      ...extraEnv,
+    };
     const p = portFor(r);
     return p !== undefined ? { ...env, PORT: String(p) } : env;
   };
@@ -161,8 +167,9 @@ async function runAdoptedDev(
 
   // A run targeting a physical iOS device installs/launches via devicectl, which
   // fails if the device is locked. We watch the output for that so we can prompt
-  // for an unlock + retry rather than dying with a raw devicectl error.
-  const xcodeDevice = !!env.PREMO_XCODE_DEVICE_UDID;
+  // for an unlock + retry rather than dying with a raw devicectl error. The
+  // destination is the same for every proc, so the resolved xcode env decides it.
+  const xcodeDevice = !!extraEnv.PREMO_XCODE_DEVICE_UDID;
   let lockDetected = false;
 
   let children: ResultPromise[] = [];

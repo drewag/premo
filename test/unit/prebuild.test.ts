@@ -91,3 +91,26 @@ describe("resolvePackages — prebuild composition", () => {
     expect(pkg!.commands.build).toBe("compile");
   });
 });
+
+describe("resolvePackages — per-package env", () => {
+  it("carries each package's own inline env (empty when unset)", async () => {
+    const root = await emptyRoot();
+    const manifest = ProjectManifest.parse({
+      name: "app",
+      env: { GLOBAL: "1" }, // project-level: layered at run time, not stored on the package
+      packages: [
+        {
+          name: "shell",
+          commands: { build: "b" },
+          env: { ORCH_SERVICE_DIR: "../dist-bundle/service" },
+        },
+        { name: "api", commands: { build: "b" } },
+      ],
+    });
+    const byName = Object.fromEntries(
+      (await resolvePackages(root, manifest)).map((p) => [p.name, p]),
+    );
+    expect(byName.shell!.env).toEqual({ ORCH_SERVICE_DIR: "../dist-bundle/service" });
+    expect(byName.api!.env).toEqual({}); // none declared
+  });
+});

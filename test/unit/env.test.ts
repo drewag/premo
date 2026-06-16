@@ -8,6 +8,7 @@ import {
   loadEnvFile,
   gapFill,
   envFileVars,
+  configEnv,
 } from "../../src/core/env.js";
 
 describe("interpolateEnv", () => {
@@ -111,5 +112,29 @@ describe("gapFill / envFileVars", () => {
     // an env with no overlay file falls back to the base values
     const missing = await envFileVars(dir, ".env", "staging");
     expect(missing.PREMO_TEST_PLAID).toBe("sandbox");
+  });
+});
+
+describe("configEnv — envFile < project env < package env", () => {
+  it("layers the inline envs over the file, package winning over project", () => {
+    const fileVars = { A: "file", B: "file", C: "file" };
+    const out = configEnv(fileVars, { B: "project", D: "project" }, { C: "package", E: "package" });
+    expect(out).toEqual({
+      A: "file", // file only
+      B: "project", // project overrides file
+      C: "package", // package overrides file
+      D: "project", // project only
+      E: "package", // package only
+    });
+  });
+
+  it("gap-fills the inline layers so an exported shell var still wins", () => {
+    // PATH is reliably exported; an inline env must NOT shadow it.
+    const out = configEnv({}, { PATH: "project-tries" }, { PATH: "package-tries" });
+    expect(out.PATH).toBeUndefined(); // dropped by gapFill → real PATH wins downstream
+  });
+
+  it("handles absent inline layers (undefined) as no-ops", () => {
+    expect(configEnv({ A: "file" }, undefined, undefined)).toEqual({ A: "file" });
   });
 });

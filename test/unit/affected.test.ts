@@ -10,6 +10,7 @@ function t(name: string, dirs: string[], extra: Partial<Package> = {}): Package 
     affectsExcept: [],
     cwd: ".",
     commands: {},
+    env: {},
     kind: "service",
     ...extra,
   };

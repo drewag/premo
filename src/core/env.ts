@@ -52,6 +52,20 @@ export async function envFileVars(
   return gapFill(base);
 }
 
+// Assemble the config-derived env contribution for a package's verb run, in
+// precedence order (low → high): envFile (`fileVars`, already gap-filled) <
+// project-level inline `env` < per-package inline `env`. The two inline layers
+// are gap-filled together so an explicitly-exported shell var still wins (the
+// same rule as the env file). The caller layers premo's injected vars
+// (PREMO_XCODE_*, PORT) on top, and process.env underneath.
+export function configEnv(
+  fileVars: Record<string, string>,
+  projectEnv: Record<string, string> | undefined,
+  packageEnv: Record<string, string> | undefined,
+): Record<string, string> {
+  return { ...fileVars, ...gapFill({ ...projectEnv, ...packageEnv }) };
+}
+
 export function interpolateEnv(input: string, env: Record<string, string | number>): string {
   return input.replace(TOKEN_RE, (_match, key: string) => {
     if (!(key in env)) {

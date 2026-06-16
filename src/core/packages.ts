@@ -32,6 +32,9 @@ export interface Package {
   affectsExcept: string[];
   cwd: string;
   commands: Partial<Record<Verb, string>>;
+  // This package's own inline env (PackageConfig.env), applied — layered over the
+  // project `env` + envFile — to its verb runs. Empty when unset.
+  env: Record<string, string>;
   // "service" (server) vs "command" (run-once/interactive CLI). Drives the dev
   // run strategy (piped multiplex vs inherited TTY) and port allocation.
   kind: "service" | "command";
@@ -101,6 +104,7 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
       affectsExcept: cfg?.affectsExcept ?? [],
       cwd,
       commands,
+      env: cfg?.env ?? {},
       kind: det?.kind ?? "service",
       // Surface the resolved xcode block so destination resolution (findXcodeConfig)
       // finds it — including a detected-but-not-yet-adopted native app.
@@ -129,6 +133,7 @@ export async function resolvePackages(root: string, manifest: ProjectManifest): 
       affectsExcept: [],
       cwd: root,
       commands,
+      env: {},
       kind: "service",
     });
   }

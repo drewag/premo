@@ -179,6 +179,8 @@ Every field is **optional and additive**, so an adopted project carries only the
 
 Per-target command overrides live under `targets.<name>.commands.<verb>`; the bare `commands.<verb>` is the project default. Worktree-local, gitignored state (active background PIDs, last-deployed cache) lives in `.premo-local.json` / `.runtime/` as today.
 
+**Env layering.** Verb runs see, in precedence order (low → high): the `envFile` dotenv (+ a per-environment `.env.<env>` overlay, §15.5) < the project-level inline `env` map < a per-package `env` map (`packages[].env`) < premo's injected vars (`$PORT`, `PREMO_XCODE_*`) < the real exported shell environment (which always wins — the dotenv/compose rule). The inline `env` maps are for **non-secret** per-unit config you'd rather keep in `premo.json` than a dotenv — e.g. a desktop shell package setting `ORCH_SERVICE_DIR` so its `dev` build finds a sibling target's payload; secrets stay in the `envFile`/vault. Per-package env is applied **per-package**, so each member of a composite `dev` target gets its own (resolved in `core/env.ts` `configEnv`, threaded through `dev`/`build`/`test`).
+
 `premo.json` is parsed by `core/project.ts` via Zod (already does this for the existing fields); the new fields extend that schema. Everything new is `.optional()`, so existing scaffolded projects keep validating unchanged.
 
 ---

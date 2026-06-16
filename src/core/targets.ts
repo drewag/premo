@@ -14,6 +14,9 @@ export interface DevProc {
   cwd: string;
   kind: "service" | "command";
   port?: number;
+  // The member package's own inline env (PackageConfig.env); layered into this
+  // proc's run env by `dev`. Absent for compose/command procs (no member package).
+  env?: Record<string, string>;
 }
 
 // A fully-resolved run/deploy target (DESIGN §13.3). `dev` is the derived list
@@ -62,6 +65,7 @@ export async function resolveTargets(root: string, manifest: ProjectManifest): P
           cwd: p.cwd,
           kind: p.kind,
           ...(port !== undefined ? { port } : {}),
+          ...(Object.keys(p.env).length ? { env: p.env } : {}),
         };
       });
 
