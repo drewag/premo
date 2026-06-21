@@ -46,7 +46,7 @@ describe("adoptProject — manual monorepo", () => {
     const m = await adoptProject(root, { quiet: true });
     // shared is a library (no dev, no deploy) → not a target.
     expect(m.targets.map((t) => t.name).sort()).toEqual(["api", "web"]);
-    expect(m.targets.find((t) => t.name === "api")!.deploy).toBe("yarn deploy:api");
+    expect(m.targets.find((t) => t.name === "api")!.deploy).toBe("npm run deploy:api");
     expect(m.targets.find((t) => t.name === "web")!.deploy).toBeUndefined();
   });
 

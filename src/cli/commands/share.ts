@@ -154,13 +154,14 @@ async function shareBackground(
     process.exitCode = 1;
     return;
   }
-  const proc = await spawnDetached(
-    ctx.root,
-    `share-${target.name}`,
-    command,
-    ctx.root,
-    process.env,
-  );
+  let proc;
+  try {
+    proc = await spawnDetached(ctx.root, `share-${target.name}`, command, ctx.root, process.env);
+  } catch (err) {
+    log.error(`Couldn't start the background tunnel: ${(err as Error).message}`);
+    process.exitCode = 1;
+    return;
+  }
   log.ok(
     `sharing ${target.name} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`,
   );

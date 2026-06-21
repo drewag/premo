@@ -1,8 +1,14 @@
 import { describe, expect, it, beforeAll } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_BASE_MIN, DEFAULT_BASE_MAX, defaultBaseForProject } from "../../src/core/ports.js";
+import {
+  DEFAULT_BASE_MIN,
+  DEFAULT_BASE_MAX,
+  DEFAULT_BLOCK,
+  defaultBaseForProject,
+} from "../../src/core/ports.js";
+import { allocatePortBlock as allocate, registryPath } from "../../src/core/port-registry.js";
 
 describe("global port registry", () => {
   let allocatePortBlock: typeof import("../../src/core/port-registry.js").allocatePortBlock;
@@ -38,5 +44,35 @@ describe("global port registry", () => {
   it("persists allocations across reads", async () => {
     await allocatePortBlock("/projects/gamma", "gamma");
     expect((await getAllocation("/projects/gamma"))?.name).toBe("gamma");
+  });
+});
+
+describe("global port registry — concurrency & exhaustion", () => {
+  it("gives every project a distinct base under concurrent allocation", async () => {
+    process.env.PREMO_HOME = await mkdtemp(path.join(tmpdir(), "premo-home-conc-"));
+    // Same name on purpose: identical seeds ⇒ maximal contention. The lock must
+    // serialize the load→mutate→save so no two paths land on the same base.
+    const n = 50;
+    const recs = await Promise.all(
+      Array.from({ length: n }, (_, i) => allocate(`/projects/p${i}`, "collide")),
+    );
+    expect(new Set(recs.map((r) => r.base)).size).toBe(n);
+  });
+
+  it("throws rather than reusing a taken base when the range is full", async () => {
+    process.env.PREMO_HOME = await mkdtemp(path.join(tmpdir(), "premo-home-full-"));
+    // Pre-seed every slot in the range so nothing is free.
+    const slots = (DEFAULT_BASE_MAX - DEFAULT_BASE_MIN) / DEFAULT_BLOCK;
+    const projects: Record<string, { name: string; base: number; block: number }> = {};
+    for (let i = 0; i < slots; i++) {
+      projects[`/seed/${i}`] = {
+        name: `seed${i}`,
+        base: DEFAULT_BASE_MIN + i * DEFAULT_BLOCK,
+        block: DEFAULT_BLOCK,
+      };
+    }
+    await writeFile(registryPath(), JSON.stringify({ projects }), "utf8");
+
+    await expect(allocate("/projects/overflow", "overflow")).rejects.toThrow(/registry is full/i);
   });
 });

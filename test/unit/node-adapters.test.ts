@@ -24,8 +24,9 @@ describe("node-scripts adapter", () => {
     expect(targets).toHaveLength(1);
     expect(targets[0]!.name).toBe("app");
     expect(targets[0]!.dirs).toEqual(["."]);
-    expect(await nodeScriptsAdapter.command("build", targets[0]!, root)).toBe("yarn build");
-    expect(await nodeScriptsAdapter.command("dev", targets[0]!, root)).toBe("yarn dev");
+    // No lockfile ⇒ npm (the universal default).
+    expect(await nodeScriptsAdapter.command("build", targets[0]!, root)).toBe("npm run build");
+    expect(await nodeScriptsAdapter.command("dev", targets[0]!, root)).toBe("npm run dev");
     expect(await nodeScriptsAdapter.command("test", targets[0]!, root)).toBeNull();
   });
 
@@ -37,19 +38,28 @@ describe("node-scripts adapter", () => {
     expect(await nodeScriptsAdapter.command("build", targets[0]!, root)).toBe("npm run build");
   });
 
+  it("uses yarn when a yarn.lock is present", async () => {
+    const root = await tmp();
+    await pkg(root, { name: "app", scripts: { build: "tsc" } });
+    await writeFile(path.join(root, "yarn.lock"), "");
+    const targets = await nodeScriptsAdapter.packages(root);
+    expect(await nodeScriptsAdapter.command("build", targets[0]!, root)).toBe("yarn build");
+  });
+
   it("maps dev to the 'start' alias when there's no dev script", async () => {
     const root = await tmp();
     await pkg(root, { name: "app", scripts: { start: "node ." } });
     const targets = await nodeScriptsAdapter.packages(root);
-    expect(await nodeScriptsAdapter.command("dev", targets[0]!, root)).toBe("yarn start");
+    expect(await nodeScriptsAdapter.command("dev", targets[0]!, root)).toBe("npm run start");
   });
 
-  it("forwards premo's port to a Vite dev server (Vite ignores $PORT)", async () => {
+  it("forwards premo's port to a Vite dev server (yarn: no `--`)", async () => {
     const root = await tmp();
     await pkg(root, {
       name: "app",
       scripts: { dev: "vite", build: "vite build", test: "vitest run" },
     });
+    await writeFile(path.join(root, "yarn.lock"), ""); // pin yarn to test its no-`--` form
     const [t] = await nodeScriptsAdapter.packages(root);
     expect(await nodeScriptsAdapter.command("dev", t!, root)).toBe(
       "yarn dev ${PORT:+--port $PORT}",
@@ -73,7 +83,7 @@ describe("node-scripts adapter", () => {
     const root = await tmp();
     await pkg(root, { name: "app", scripts: { dev: "node server.js" } });
     const [t] = await nodeScriptsAdapter.packages(root);
-    expect(await nodeScriptsAdapter.command("dev", t!, root)).toBe("yarn dev");
+    expect(await nodeScriptsAdapter.command("dev", t!, root)).toBe("npm run dev");
   });
 });
 
@@ -90,7 +100,7 @@ describe("workspaces adapter", () => {
     const byName = Object.fromEntries(targets.map((t) => [t.name, t]));
     expect(Object.keys(byName).sort()).toEqual(["a", "app", "b"]);
     expect(byName.a!.dirs).toEqual(["packages/a/"]);
-    expect(await workspacesAdapter.command("build", byName.a!, root)).toBe("yarn build");
+    expect(await workspacesAdapter.command("build", byName.a!, root)).toBe("npm run build");
     expect(await workspacesAdapter.command("build", byName.b!, root)).toBeNull();
   });
 

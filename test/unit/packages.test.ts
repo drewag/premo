@@ -21,8 +21,8 @@ describe("resolvePackages", () => {
 
     const packages = await resolvePackages(root, manifest);
     expect(packages).toHaveLength(1);
-    expect(packages[0]!.commands.build).toBe("yarn build");
-    expect(packages[0]!.commands.test).toBe("yarn test");
+    expect(packages[0]!.commands.build).toBe("npm run build");
+    expect(packages[0]!.commands.test).toBe("npm run test");
   });
 
   it("lets project-level commands override the adapter", async () => {

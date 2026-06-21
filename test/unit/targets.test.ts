@@ -52,7 +52,7 @@ describe("resolveTargets — auto-seed (DESIGN §13.3)", () => {
     const targets = await resolveTargets(root, M());
     const api = targets.find((t) => t.name === "api")!;
     expect(api.packages).toEqual(["api"]);
-    expect(api.dev.map((d) => d.command)).toEqual(["yarn dev"]);
+    expect(api.dev.map((d) => d.command)).toEqual(["npm run dev"]);
     expect(api.dev[0]!.cwd).toBe(path.join(root, "api"));
   });
 
@@ -63,7 +63,7 @@ describe("resolveTargets — auto-seed (DESIGN §13.3)", () => {
     await pkg(path.join(root, "web"), { name: "web", scripts: { dev: "vite" } });
 
     const targets = await resolveTargets(root, M());
-    expect(targets.find((t) => t.name === "api")!.deploy).toBe("yarn deploy:api");
+    expect(targets.find((t) => t.name === "api")!.deploy).toBe("npm run deploy:api");
     expect(targets.find((t) => t.name === "api")!.deployCwd).toBe(root);
     expect(targets.find((t) => t.name === "web")!.deploy).toBeNull();
   });
@@ -75,7 +75,7 @@ describe("resolveTargets — auto-seed (DESIGN §13.3)", () => {
     await pkg(path.join(root, "web"), { name: "web", scripts: { dev: "vite" } });
 
     const api = (await resolveTargets(root, M())).find((t) => t.name === "api")!;
-    expect(api.deploy).toBe("yarn deploy");
+    expect(api.deploy).toBe("npm run deploy");
     expect(api.deployCwd).toBe(path.join(root, "api"));
   });
 
@@ -107,7 +107,7 @@ describe("resolveTargets — auto-seed (DESIGN §13.3)", () => {
     await writeFile(path.join(root, "deploy", "deploy.sh"), "#!/bin/sh\n");
 
     const targets = await resolveTargets(root, M());
-    expect(targets[0]!.deploy).toBe("yarn deploy"); // package script wins
+    expect(targets[0]!.deploy).toBe("npm run deploy"); // package script wins
   });
 
   it("does not guess which target gets deploy/deploy.sh when several targets and no default", async () => {

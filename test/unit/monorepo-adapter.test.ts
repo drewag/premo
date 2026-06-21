@@ -47,8 +47,8 @@ describe("monorepo adapter (manual, recursive depth-1)", () => {
     const packages = await monorepoAdapter.packages(root);
     const api = packages.find((p) => p.name === "api")!;
     const web = packages.find((p) => p.name === "web")!;
-    expect(await monorepoAdapter.command("build", api, root)).toBe("yarn build");
-    expect(await monorepoAdapter.command("test", api, root)).toBe("yarn test");
+    expect(await monorepoAdapter.command("build", api, root)).toBe("npm run build");
+    expect(await monorepoAdapter.command("test", api, root)).toBe("npm run test");
     expect(await monorepoAdapter.command("test", web, root)).toBeNull(); // honest: web has no test
   });
 

@@ -9,8 +9,9 @@ export type PackageManager = "yarn" | "npm" | "pnpm";
 
 export function detectPackageManager(root: string): PackageManager {
   if (existsSync(path.join(root, "pnpm-lock.yaml"))) return "pnpm";
+  if (existsSync(path.join(root, "yarn.lock"))) return "yarn";
   if (existsSync(path.join(root, "package-lock.json"))) return "npm";
-  return "yarn"; // yarn.lock, or default per project convention
+  return "npm"; // no lockfile — npm is the most universal default
 }
 
 export interface PackageJson {

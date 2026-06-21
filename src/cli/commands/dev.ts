@@ -157,9 +157,15 @@ async function runAdoptedDev(
       process.exitCode = 1;
       return;
     }
-    for (const r of runnables) {
-      const proc = await spawnDetached(ctx.root, r.label, r.command, r.cwd, envFor(r));
-      log.ok(`${r.label} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`);
+    try {
+      for (const r of runnables) {
+        const proc = await spawnDetached(ctx.root, r.label, r.command, r.cwd, envFor(r));
+        log.ok(`${r.label} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`);
+      }
+    } catch (err) {
+      log.error(`Couldn't start the background process: ${(err as Error).message}`);
+      process.exitCode = 1;
+      return;
     }
     log.dim("  `premo logs` to tail, `premo stop` to stop.");
     return;

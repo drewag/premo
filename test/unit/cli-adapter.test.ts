@@ -45,6 +45,7 @@ describe("cli adapter", () => {
       bin: "./dist/cli.js",
       scripts: { build: "tsc", test: "vitest", lint: "eslint ." },
     });
+    await writeFile(path.join(root, "yarn.lock"), ""); // pin yarn (PM is incidental here)
     const [t] = await cliAdapter.packages(root);
     expect(await cliAdapter.command("build", t!, root)).toBe("yarn build");
     expect(await cliAdapter.command("test", t!, root)).toBe("yarn test");
@@ -58,11 +59,12 @@ describe("cli adapter", () => {
       bin: { premo: "./dist/bin/premo.js" },
       devDependencies: { tsx: "^4" },
     });
+    await writeFile(path.join(root, "yarn.lock"), ""); // a yarn project (npx variant below)
     await mkdir(path.join(root, "bin"), { recursive: true });
     await writeFile(path.join(root, "bin/premo.ts"), "// entry");
     const [t] = await cliAdapter.packages(root);
-    // tsx is resolved through the package manager (default yarn, quiet) so it's
-    // found on PATH and stdout stays clean when premo shells the dev command out.
+    // tsx is resolved through the package manager (yarn, quiet) so it's found on
+    // PATH and stdout stays clean when premo shells the dev command out.
     expect(await cliAdapter.command("dev", t!, root)).toBe("yarn --silent tsx bin/premo.ts");
   });
 
@@ -83,6 +85,7 @@ describe("cli adapter", () => {
   it("falls back to a dev/start script, then to `node <bin>`", async () => {
     const scriptRoot = await tmp();
     await pkg(scriptRoot, { name: "tool", bin: "./dist/cli.js", scripts: { start: "node ." } });
+    await writeFile(path.join(scriptRoot, "yarn.lock"), ""); // pin yarn (PM is incidental here)
     const [st] = await cliAdapter.packages(scriptRoot);
     expect(await cliAdapter.command("dev", st!, scriptRoot)).toBe("yarn start");
 

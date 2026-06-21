@@ -12,11 +12,10 @@ export function register(program: Command): void {
       if (!root) return;
 
       const stopped = await stopBackground(root);
-      for (const name of stopped) log.ok(`stopped ${name}`);
       if (stopped.length === 0) {
         log.dim("Nothing running.");
         return;
       }
-      log.ok("stopped");
+      for (const name of stopped) log.ok(`stopped ${name}`);
     });
 }

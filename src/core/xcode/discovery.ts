@@ -57,9 +57,21 @@ export async function findXcodeProject(root: string): Promise<XcodeProject | nul
   return null;
 }
 
-// The `-workspace X` / `-project X` flag pair for xcodebuild invocations.
+// The `-workspace X` / `-project X` flag for an xcodebuild invocation. The single
+// source of truth for the flag's shape, shared by the discovery-time `projectFlag`
+// (an `XcodeProject`) and the runner (a resolved `XcodeConfig`) — workspace wins
+// when both are set, since it's xcodebuild's entry point.
+export function xcodeTargetFlag(opts: { workspace?: string; project?: string }): string {
+  return opts.workspace
+    ? `-workspace ${shq(opts.workspace)}`
+    : `-project ${shq(opts.project ?? "")}`;
+}
+
+// The flag for a freshly-discovered project (basename relative to the root).
 export function projectFlag(p: XcodeProject): string {
-  return `${p.kind === "workspace" ? "-workspace" : "-project"} ${shq(p.path)}`;
+  return p.kind === "workspace"
+    ? xcodeTargetFlag({ workspace: p.path })
+    : xcodeTargetFlag({ project: p.path });
 }
 
 // The pre-build command for a GENERATED Xcode project, or null if the project

@@ -25,16 +25,18 @@ _premo() {
 compdef _premo premo
 `,
   bash: `_premo() {
-  local args out line
+  local args out line cur
   COMPREPLY=()
+  cur="\${COMP_WORDS[COMP_CWORD]}"
   args=("\${COMP_WORDS[@]:1:COMP_CWORD}")   # tokens after 'premo', incl. current
   out=$(premo __complete -- "\${args[@]}" 2>/dev/null)
-  local -a vals=()
+  # Match each candidate literally against the current word — no compgen -W, which
+  # would glob-expand or word-split a value (e.g. a target name with * or a space).
   while IFS= read -r line; do
     [[ -z $line ]] && continue
-    vals+=("\${line%%$'\\t'*}")              # drop the description
+    line="\${line%%$'\\t'*}"                 # value only (drop the description)
+    [[ $line == "$cur"* ]] && COMPREPLY+=("$line")
   done <<< "$out"
-  COMPREPLY=($(compgen -W "\${vals[*]}" -- "\${COMP_WORDS[COMP_CWORD]}"))
 }
 complete -F _premo premo
 `,
