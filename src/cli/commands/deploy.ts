@@ -8,7 +8,14 @@ import { deployableEnvNames } from "../../manifest/environments.js";
 import { envFileVars } from "../../core/env.js";
 import { multiSelectFromList } from "../../core/select.js";
 import { nextVersion } from "../../core/version.js";
-import { resolveDeployedRef, type DeployedRef } from "../../core/deploy.js";
+import {
+  buildDeployPlans,
+  deployEnvVars,
+  pendingLabel,
+  pendingPlans,
+  resolveDeployEnv,
+  type DeployPlan,
+} from "../../core/deploy.js";
 import {
   advanceBranchRef,
   createTag,
@@ -17,23 +24,9 @@ import {
   headCommit,
   isAncestor,
   isDirty,
-  logRange,
   pushRefs,
 } from "../../core/git.js";
 import { log } from "../../core/logger.js";
-
-interface Plan {
-  target: Target;
-  ref: DeployedRef;
-  commits: { hash: string; subject: string }[];
-  upToDate: boolean;
-}
-
-function pendingLabel(p: Plan): string {
-  if (!p.ref.trackingRef) return "first deploy";
-  if (p.commits.length === 0) return "up to date";
-  return `${p.commits.length} new commit${p.commits.length === 1 ? "" : "s"}`;
-}
 
 export function register(program: Command): void {
   program
@@ -49,7 +42,6 @@ export function register(program: Command): void {
         opts: { force?: boolean; yes?: boolean; env?: string },
       ) => {
         const ctx = await ensureContext(process.cwd());
-        const fileVars = await envFileVars(ctx.root, ctx.manifest.envFile ?? undefined);
         const targets = await resolveTargets(ctx.root, ctx.manifest);
         const packages = await resolvePackages(ctx.root, ctx.manifest);
         const dirsByName = new Map(packages.map((p) => [p.name, p.dirs]));
@@ -83,15 +75,17 @@ export function register(program: Command): void {
         // axis (DESIGN §15.2); with none declared, a single implicit "prod" env
         // preserves the pre-§15 default. The `<env>` ref segment (§6.5) appears
         // only when more than one is deployable.
-        const envs = deployableEnvNames(ctx.manifest.environments);
-        const deployEnvs = envs.length > 0 ? envs : ["prod"];
-        const env = opts.env ?? deployEnvs[0]!;
-        if (!deployEnvs.includes(env)) {
-          log.error(`Unknown deploy env "${env}". Deployable: ${deployEnvs.join(", ")}`);
+        const resolved = resolveDeployEnv(deployableEnvNames(ctx.manifest.environments), opts.env);
+        if ("error" in resolved) {
+          log.error(resolved.error);
           process.exitCode = 1;
           return;
         }
-        const multiEnv = deployEnvs.length > 1;
+        const { env, multiEnv } = resolved;
+
+        // `.env` < `.env.<env>` overlay, gap-filled — the same env the verbs run
+        // under (DESIGN §15), so a deploy command sees the destination's config.
+        const fileVars = await envFileVars(ctx.root, ctx.manifest.envFile ?? undefined, env);
 
         const head = await headCommit(ctx.root);
         if (!head) {
@@ -104,27 +98,18 @@ export function register(program: Command): void {
         log.step("Fetching tags + deploy refs from origin");
         await fetchOrigin(ctx.root);
 
-        // A target is "pending" when commits touching its member packages have
-        // landed since its last release (DESIGN §13.5).
-        const plans: Plan[] = [];
-        for (const target of deployable) {
-          const ref = await resolveDeployedRef(ctx.root, target.name, env, multiEnv);
-          const commits = ref.trackingRef
-            ? await logRange(ctx.root, ref.trackingRef, "HEAD", memberDirs(target))
-            : [];
-          plans.push({ target, ref, commits, upToDate: !!ref.trackingRef && commits.length === 0 });
-        }
+        const plans = await buildDeployPlans(ctx.root, deployable, env, multiEnv, memberDirs);
 
         const interactive = !!process.stdin.isTTY && !!process.stdout.isTTY;
 
         // Select what to deploy: a named target ships directly; bare deploy
         // offers an interactive multi-select pre-checked to the pending set
         // (or, with --yes/no-TTY, deploys the pending set non-interactively).
-        let toDeploy: Plan[];
+        let toDeploy: DeployPlan[];
         if (targetArg) {
           toDeploy = plans;
         } else if (opts.yes) {
-          toDeploy = plans.filter((p) => opts.force || !p.upToDate);
+          toDeploy = pendingPlans(plans, !!opts.force);
         } else if (interactive) {
           const pre = plans.map((p) => !!opts.force || !p.upToDate);
           const labels = plans.map((p) => `${p.target.name}  ${pc.dim(`(${pendingLabel(p)})`)}`);
@@ -183,14 +168,11 @@ export function register(program: Command): void {
             shell: true,
             stdio: "inherit",
             reject: false,
-            env: {
-              ...process.env,
-              ...fileVars,
-              PREMO_DEPLOY_VERSION: version,
-              PREMO_DEPLOY_TARGET: p.target.name,
-              PREMO_DEPLOY_ENV: env,
-              PREMO_ENV: env,
-            },
+            env: deployEnvVars(fileVars, ctx.manifest.env, {
+              version,
+              target: p.target.name,
+              env,
+            }),
           });
           if (res.exitCode !== 0) {
             log.error(

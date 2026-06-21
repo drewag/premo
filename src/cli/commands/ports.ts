@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { findProjectRoot, loadProject } from "../../core/project.js";
+import { loadProject } from "../../core/project.js";
+import { requireProjectRoot } from "../guard.js";
 import { log } from "../../core/logger.js";
 
 export function register(program: Command): void {
@@ -8,13 +9,8 @@ export function register(program: Command): void {
     .description("Show the port allocation for this project.")
     .option("--json", "emit machine-readable JSON")
     .action(async (opts: { json?: boolean }) => {
-      const root = findProjectRoot(process.cwd());
-      if (!root) {
-        if (opts.json) log.json({ error: "not-a-premo-project" });
-        else log.error("Not in a premo project (no premo.json found).");
-        process.exitCode = 1;
-        return;
-      }
+      const root = requireProjectRoot(process.cwd(), { json: opts.json });
+      if (!root) return;
       const manifest = await loadProject(root);
       const targetPorts = manifest.targets
         .filter((t) => t.ports)

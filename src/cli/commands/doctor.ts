@@ -74,7 +74,7 @@ const hostChecks: Check[] = [
 
 // --- gathering (shared by the human and JSON renderers) ---
 
-interface ProjectReport {
+export interface ProjectReport {
   name: string;
   root: string;
   adopted: boolean;
@@ -92,7 +92,7 @@ interface ProjectReport {
 // dev/deploy are the target-axis verbs shown in the targets list (DESIGN §13).
 const PKG_VERBS = ["build", "test", "lint"] as const;
 
-async function gatherProject(cwd: string): Promise<ProjectReport> {
+export async function gatherProject(cwd: string): Promise<ProjectReport> {
   const { root, manifest, adopted, adapterName } = await inspectContext(cwd);
   const repo = await isGitRepo(root);
   const base = repo ? await resolveBase(root, manifest.changeBase) : null;

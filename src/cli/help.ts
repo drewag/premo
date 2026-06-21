@@ -10,7 +10,14 @@ import { log } from "../core/logger.js";
 // whichever verbs are wired), versus premo-management commands. `shell` is
 // conditionally active — only when the project declares one.
 const PROJECT_HELPERS = ["open", "share", "logs", "stop"];
-const META = ["doctor", "adopt", "skill", "ports", "completion"];
+const META = ["doctor", "adopt", "guide", "skill", "ports", "completion"];
+
+// Every command name that one of the explicit groups above already places.
+// `shell` is grouped conditionally (Active vs Not-wired) and `help` is
+// Commander's built-in, so both are excluded from the "needs a home" check.
+function groupedNames(): Set<string> {
+  return new Set([...VERBS, ...PROJECT_HELPERS, ...META, "shell", "help"]);
+}
 
 // True when the invocation is a request for the top-level overview — no
 // subcommand, or a bare help flag. `premo build --help` is NOT top-level.
@@ -93,9 +100,14 @@ export async function printGroupedHelp(program: Command): Promise<void> {
     for (const [name, val] of projectRows) log.info(`  ${pc.cyan(name.padEnd(width))}  ${val}`);
   }
 
+  // Any registered command not placed by an explicit group still gets a home
+  // here, so adding one to commands/index.ts can never make it invisible in help.
+  const grouped = groupedNames();
+  const ungrouped = program.commands.map((c) => c.name()).filter((n) => !grouped.has(n));
+
   log.info("");
   log.info(pc.bold("Manage premo"));
-  printRows(META.map((n) => [n, desc(n)]));
+  printRows([...META, ...ungrouped].map((n) => [n, desc(n)]));
 
   log.info("");
   log.dim("Run `premo <command> --help` for details.");

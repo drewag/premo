@@ -29,11 +29,13 @@ Humans get muscle memory; agents get a contract. Both press the same buttons.
 
 ## How it works
 
-premo resolves each verb through three tiers (first hit wins):
+Those five — `dev`, `build`, `test`, `lint`, `deploy` — are premo's **verbs**: a fixed, closed vocabulary that means the same thing in every repo. premo resolves each verb through three tiers (first hit wins):
 
 1. **Explicit config** — a `premo.json` maps the verb to a command. Always wins.
 2. **Built-in adapter** — premo sniffs the repo (npm/yarn/pnpm scripts, workspaces, Xcode…) and supplies a sensible default, so a standard repo Just Works with zero config.
 3. **Helpful not-implemented** — neither resolves it → an actionable message telling you the next move, never a crash.
+
+In a multi-unit repo, a `premo.json` describes two kinds of unit: **packages** (the `build`/`test`/`lint` units — a directory of code) and **targets** (the `dev`/`deploy` units — a runnable or shippable composing one or more packages). A single-package repo has one of each and they coincide invisibly.
 
 premo only ever reads a `premo.json` and shells out to your real toolchain. Uninstalling it breaks nothing.
 
@@ -43,11 +45,11 @@ premo **runs the commands a project declares** (in `premo.json` and your package
 
 ## Supported stacks
 
-| Adapter        | What it covers                                                                      |
-| -------------- | ----------------------------------------------------------------------------------- |
-| `node-scripts` | Single-package Node app — maps verbs to your `package.json` scripts                 |
-| `workspaces`   | A monorepo (yarn/npm `workspaces` or pnpm) — one target per package, affected-aware |
-| `xcode`        | Native iOS/macOS apps — build/test/run on a simulator or device from the CLI        |
+| Adapter        | What it covers                                                                         |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `node-scripts` | Single-package Node app — maps verbs to your `package.json` scripts                    |
+| `workspaces`   | A monorepo (yarn/npm `workspaces` or pnpm) — one package per workspace, affected-aware |
+| `xcode`        | Native iOS/macOS apps — build/test/run on a simulator or device from the CLI           |
 
 Unknown stacks still respond with a helpful message; `premo adopt` writes a starter `premo.json` you can edit. Adding an adapter is the main way to contribute — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 

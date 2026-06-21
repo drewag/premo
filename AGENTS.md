@@ -41,7 +41,7 @@ scripts.
 ## Contributing to premo itself
 
 - **Architecture:** closed verbs → resolved through three tiers (config → adapter → helpful-not-implemented). The dispatcher stays dumb: resolve verb → command string → run it. See [DESIGN.md](./DESIGN.md).
-- **The extension point is an `Adapter`** (`src/core/adapters/index.ts`): `detect` / `targets` / `command`, plus an optional `adopt` hook to bake concrete config. The smallest example is `node-scripts.ts` (~30 lines). See [CONTRIBUTING.md](./CONTRIBUTING.md) for the walkthrough.
+- **The extension point is an `Adapter`** (`src/core/adapters/index.ts`): `detect` / `packages` / `command`, plus an optional `adopt` hook to bake concrete config. The smallest example is `node-scripts.ts` (~26 lines). See [CONTRIBUTING.md](./CONTRIBUTING.md) for the walkthrough.
 - **The manifest schema** is Zod in `src/manifest/types.ts`; every field is optional/additive.
 - **Run from source:** `source ./bin/activate.sh`, then `premo` resolves to this clone.
 - **Before you finish:** `yarn build` (typecheck), `yarn test` (Vitest), `yarn lint`. All three must pass.
