@@ -156,8 +156,9 @@ export const ShareConfig = z.object({
 export type ShareConfig = z.infer<typeof ShareConfig>;
 
 // The data axis (see DATA-DIRECTORIES.md). premo owns an opaque handle per
-// isolated data instance and tracks the registry in .premo-local.json; the repo
-// owns the physical state, addressed entirely by the handle. Every instance simply
+// isolated data instance and tracks the registry in its host-global home (keyed by
+// the repo's main worktree, so handles are shared across every worktree of a repo);
+// the repo owns the physical state, addressed entirely by the handle. Every instance simply
 // persists until something calls `delete` — premo has no reaper, so there is no
 // ephemeral/retained distinction (a consumer that wants throwaway instances just
 // deletes the ones it's done with). Two ways to wire it:
@@ -167,7 +168,8 @@ export type ShareConfig = z.infer<typeof ShareConfig>;
 //   provisions / copies / drops state keyed by the handle, returns nothing.
 //
 //   Contract B — the directory adapter. Set `dir` and premo manages each instance
-//   as a directory under .premo/data/<handle>, supplying create/clone/delete itself
+//   as a directory under its host-global home ($PREMO_HOME/data/<project>/<handle>),
+//   supplying create/clone/delete itself
 //   (copy-on-write copy / rm). `dir` is the project's live data path (relative to
 //   root) that plain `premo dev` points at; `dev --data <handle>` points at the
 //   instance dir instead. Either way the value reaches the run as PREMO_DATA_DIR.
