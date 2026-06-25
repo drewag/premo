@@ -7,6 +7,7 @@ import { ensureContext, type Context } from "../../core/context.js";
 import { resolveTargets, defaultTarget, type DevProc } from "../../core/targets.js";
 import { configEnv, envFileVars } from "../../core/env.js";
 import { spawnDetached } from "../../core/supervise.js";
+import { dataRunEnv, liveDataEnv } from "../../core/data.js";
 import { shq } from "../../core/shell.js";
 import { installFooter, type Footer } from "../../core/footer.js";
 import { isDeviceLockedError } from "../../core/xcode.js";
@@ -39,6 +40,7 @@ export function register(program: Command): void {
     )
     .argument("[target]", "run a single target")
     .option("--background", "run detached; manage with `premo logs` / `premo stop`")
+    .option("--data <handle>", "run against an isolated data instance (see `premo data`)")
     .option("-e, --env <name>", "environment to run (e.g. dev | prod); see premo.json")
     .option("--device <name>", "destination device/simulator (xcode projects)")
     .option("--platform <name>", "destination platform: ios | macos | visionos (xcode projects)")
@@ -49,6 +51,7 @@ export function register(program: Command): void {
         targetArg: string | undefined,
         opts: {
           background?: boolean;
+          data?: string;
           env?: string;
           device?: string;
           platform?: string;
@@ -65,7 +68,27 @@ export function register(program: Command): void {
           process.exitCode = 1;
           return;
         }
-        await runAdoptedDev(ctx, target, !!opts.background, xcodeEnv, passthrough);
+        // Resolve the data instance (PREMO_DATA_HANDLE/_DIR) the same way: an
+        // explicit --data instance, else the project's live data dir (if any).
+        let dataEnv: Record<string, string>;
+        if (opts.data) {
+          const resolved = await dataRunEnv(ctx.root, ctx.manifest, opts.data);
+          if (resolved === null) {
+            log.error(`No data instance "${opts.data}". List them with \`premo data list\`.`);
+            process.exitCode = 1;
+            return;
+          }
+          dataEnv = resolved;
+        } else {
+          dataEnv = liveDataEnv(ctx.root, ctx.manifest);
+        }
+        await runAdoptedDev(
+          ctx,
+          target,
+          !!opts.background,
+          { ...xcodeEnv, ...dataEnv },
+          passthrough,
+        );
       },
     );
 }

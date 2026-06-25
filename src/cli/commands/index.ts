@@ -8,6 +8,7 @@ import { register as lint } from "./lint.js";
 import { register as deploy } from "./deploy.js";
 import { register as stop } from "./stop.js";
 import { register as logs } from "./logs.js";
+import { register as data } from "./data.js";
 import { register as ports } from "./ports.js";
 import { register as open } from "./open.js";
 import { register as share } from "./share.js";
@@ -29,6 +30,7 @@ export const COMMANDS: RegisterFn[] = [
   deploy,
   stop,
   logs,
+  data,
   ports,
   open,
   share,

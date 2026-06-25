@@ -284,9 +284,29 @@ Mostly generic, lifted from `odo/email` (`scripts/tree.ts`):
 
 (odo's per-worktree port-block allocation is its own concern; premo's hash-derived port base already gives deterministic per-project ports, and per-worktree port isolation can layer on later if needed.)
 
-### 9.2 Data-branch — deferred
+### 9.2 Data instances — shipped (the `data` axis)
 
-`odo/email`'s data-branches (per-branch Postgres/Redis/Qdrant volumes, per-branch encryption secrets, port blocks) are deeply tied to having stateful services — meaningless for a static site. premo will **not** ship a generic data-branch built-in. A stateful project opts in via a tier-3 skill / declared plumbing. Its "friendly semantics" (clone semantics, secret handling, lifecycle vs. worktrees) deserve a dedicated design pass and are explicitly out of scope here.
+What §9.2 originally deferred now exists as the **`data` axis** — see
+**[DATA-DIRECTORIES.md](./DATA-DIRECTORIES.md)** for the full spec. The shape that
+made it tractable: premo owns an **opaque handle** per isolated data instance (and
+the registry, in `.premo-local.json`); the repo owns the physical state, addressed
+entirely by that handle. Two tiers, mirroring the verbs:
+
+- **Wired scripts** (`data.create`/`clone`/`delete`) — the substrate-agnostic
+  floor; premo runs them with `PREMO_DATA_HANDLE` (+ `PREMO_DATA_FROM`) injected.
+  Every instance just persists until `delete` — premo has no reaper, so there's no
+  ephemeral/retained distinction.
+- **The directory adapter** (`data.dir`) — premo manages each instance as a dir
+  under `.premo/data/<handle>` (copy-on-write clone / `rm`), and maps it onto the
+  app's native data var via `data.env` (e.g. `{ "DATA_DIR": "${PREMO_DATA_DIR}" }`)
+  so the app needs no change. `premo adopt` auto-detects this for the common shape
+  (a `*_DATA_DIR` compose/env var, a sqlite `file:` url, or a `process.env.*DATA_DIR`
+  config reference). `premo dev --data <handle>` runs the stack against an instance;
+  `premo data <create|clone|delete|list>` manages them.
+
+Surface is `core/data.ts` + `core/data-detect.ts` + the `data` command. The
+secret-handling/side-effect-safety semantics (a clone with external integrations
+stubbed) remain the repo's responsibility, as documented in DATA-DIRECTORIES.md §3.
 
 ---
 
@@ -314,7 +334,7 @@ New, from the task-runner reframe:
 15. **Deploy is git-ref bookkeeping** (§6.5): `deployed/<target>` refs, ff-only advance + version tag, `git log` for the undeployed change listing. **Single env by default; multiple supported**, and the `<env>` ref segment appears only when more than one env is configured.
 16. **premo owns a generic background-supervision layer** — detached process-group spawn + `.premo-local.json` records + logfile + group-kill — because we can't lean on Docker's lifecycle for host processes.
 17. **git is assumed.** Affected-detection, deploy, and worktrees all require a git repo.
-18. **Data-branches are out of scope** (§9.2); a stateful project opts in via tier-3 plumbing, designed separately.
+18. **Data instances ship as the `data` axis** (§9.2, [DATA-DIRECTORIES.md](./DATA-DIRECTORIES.md)): an opaque handle per isolated instance (premo owns the registry), realized by wired scripts or the built-in directory adapter; `premo dev --data <handle>` runs against one. _(Supersedes the original "data-branches are out of scope.")_
 19. **Every capability is a project-level contract; scaffolding and adapters only populate it.** No feature branches on "is this a scaffolded project." `shell`, `deploy`, `open`, and the verbs all resolve from declared config (`commands`, `shells`, …). `premo new` and future adapters _write_ that config, but a hand-authored `premo.json` is first-class and behaves identically. When tempted to special-case scaffolded vs. adopted, define the contract instead and have scaffolding fulfill it.
 
 Monorepo model (§13, supersedes the single-`targets` parts of 12/13/15 above):
@@ -356,7 +376,7 @@ premo grew out of a project _scaffolder_ — composing a typed monorepo from reu
 - **v0.2.x (shipped):** the `xcode` adapter — detect `.xcodeproj`/`.xcworkspace`, build/test/run on a simulator or device, interactive destination picker with a remembered last device, baked commands via `adopt`.
 - **v0.2.x (shipped):** the **skill tier** — `premo skill` emits a `SKILL.md` (a self-contained task file) that teaches a coding agent how to finish wiring an unhandled stack, surfaced from the not-implemented and no-adapter paths. Plus the **agent-facing surface**: `--json` on `doctor`/`adopt`/`ports`/`skill`, and a repo-root `AGENTS.md`.
 - **v0.3:** worktree support (§9.1); per-file `lint`; a static-site deploy adapter (auto-discover the `deploy/deploy.sh` contract).
-- **Later:** promotion tooling (skill → configure → convention); npm/pnpm-workspace + more adapters; data-branch design pass.
+- **Later:** promotion tooling (skill → configure → convention); npm/pnpm-workspace + more adapters; more `data` substrate adapters (postgres template-db, docker volume, ZFS/btrfs) on top of the shipped directory adapter (§9.2).
 
 ### Testing implications
 

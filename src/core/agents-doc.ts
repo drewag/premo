@@ -156,6 +156,8 @@ Unwired verbs: ${unwiredLines}
   default (re-run after adding a package, dir, or build step); \`--force\` rewrites.
 - \`premo doctor [--json]\` — diagnose what's wired without side effects.
 - \`premo stop\` / \`premo logs\` / \`premo ports\` — manage \`dev --background\` sessions.
+- \`premo data <create|clone|delete|list>\` — isolated data instances
+  (when \`data\` is wired): each gets its own state; run one with \`premo dev --data <handle>\`.
 - \`premo open\` — open the project's URL in the browser (\`openUrl\`/\`$PORT\`).
   \`premo shell\` — enter a configured shell. \`premo share\` — expose a dev port publicly.
 - \`premo skill\` — when a repo is only partly wired, emit a \`SKILL.md\` task file

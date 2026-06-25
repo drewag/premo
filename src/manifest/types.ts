@@ -155,6 +155,43 @@ export const ShareConfig = z.object({
 });
 export type ShareConfig = z.infer<typeof ShareConfig>;
 
+// The data axis (see DATA-DIRECTORIES.md). premo owns an opaque handle per
+// isolated data instance and tracks the registry in .premo-local.json; the repo
+// owns the physical state, addressed entirely by the handle. Every instance simply
+// persists until something calls `delete` — premo has no reaper, so there is no
+// ephemeral/retained distinction (a consumer that wants throwaway instances just
+// deletes the ones it's done with). Two ways to wire it:
+//
+//   Contract A — wired scripts. premo runs these (cwd = root, normal env layering)
+//   with PREMO_DATA_HANDLE injected (+ PREMO_DATA_FROM for clone). The script
+//   provisions / copies / drops state keyed by the handle, returns nothing.
+//
+//   Contract B — the directory adapter. Set `dir` and premo manages each instance
+//   as a directory under .premo/data/<handle>, supplying create/clone/delete itself
+//   (copy-on-write copy / rm). `dir` is the project's live data path (relative to
+//   root) that plain `premo dev` points at; `dev --data <handle>` points at the
+//   instance dir instead. Either way the value reaches the run as PREMO_DATA_DIR.
+//
+// A wired action always overrides the built-in for that action, so the two forms
+// compose (e.g. `dir` for the common ops + a custom `clone` script).
+export const DataConfig = z
+  .object({
+    create: z.string().optional(),
+    clone: z.string().optional(),
+    delete: z.string().optional(),
+    dir: z.string().optional(),
+    // For the directory adapter: env vars premo sets each run so the app reads its
+    // data from the active instance WITHOUT being changed to read PREMO_DATA_DIR.
+    // `${PREMO_DATA_DIR}` interpolates to the absolute instance dir — map it onto
+    // the app's native var, e.g. { "DATA_DIR": "${PREMO_DATA_DIR}" } or a sqlite
+    // url { "DATABASE_URL": "file:${PREMO_DATA_DIR}/app.db" }. Layered like $PORT.
+    env: z.record(z.string()).optional(),
+  })
+  .refine((d) => d.dir !== undefined || d.create !== undefined, {
+    message: "data needs a `dir` (directory adapter) or a wired `create` command",
+  });
+export type DataConfig = z.infer<typeof DataConfig>;
+
 export const ProjectManifest = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]*$/),
   version: z.string().default("0"),
@@ -197,6 +234,10 @@ export const ProjectManifest = z.object({
   deploy: DeployConfig.optional(),
   // How `premo share` exposes a target publicly (DESIGN §14). Absent ⇒ tailscale.
   share: ShareConfig.optional(),
+  // The data axis (DATA-DIRECTORIES.md). Wire lifecycle scripts or set `dir` to
+  // use premo's built-in directory adapter. Absent ⇒ the project has no managed
+  // data instances and `premo data` reports it's not wired.
+  data: DataConfig.optional(),
   // Present when the xcode adapter has adopted this project.
   xcode: XcodeConfig.optional(),
   // Project-level pre-build hook (the single-unit case, e.g. a single-app xcode

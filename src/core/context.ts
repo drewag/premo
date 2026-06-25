@@ -10,6 +10,7 @@ import {
   sanitizeProjectName,
 } from "./project.js";
 import { detectAdapter } from "./adapters/index.js";
+import { detectData } from "./data-detect.js";
 import { readPackageJson } from "./adapters/node-shared.js";
 import { resolveTargets, toTargetConfig, servesHttp, PORT_STEP } from "./targets.js";
 import { ensurePremoGitignore } from "./local.js";
@@ -180,6 +181,13 @@ async function detectDraft(root: string): Promise<DetectResult> {
   // materialize them (without ports); composite targets are added by hand.
   const seeded = await resolveTargets(root, ProjectManifest.parse(draft));
   if (seeded.length > 0) draft.targets = seeded.map(toTargetConfig);
+
+  // Auto-detect the standard data shape (a single env var relocating all state to a
+  // `.data`-ish dir). The merge keeps an existing `data` block; this only fills a gap.
+  if (!draft.data) {
+    const data = detectData(root);
+    if (data) draft.data = data;
+  }
 
   return { draft, adapterName: adapter?.name ?? null, packageCount: detected.length };
 }

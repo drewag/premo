@@ -7,6 +7,7 @@ import { resolvePackages } from "../../core/packages.js";
 import { resolveTargets } from "../../core/targets.js";
 import { isGitRepo, resolveBase } from "../../core/git.js";
 import { listBackground } from "../../core/supervise.js";
+import { listInstances } from "../../core/data.js";
 import { log } from "../../core/logger.js";
 
 interface Check {
@@ -85,6 +86,12 @@ export interface ProjectReport {
   packages: { name: string; commands: Record<Verb, string | null> }[];
   targets: { name: string; dev: boolean; deploy: boolean; default: boolean; port: number | null }[];
   environments: { name: string; default: boolean; deploy: boolean }[];
+  data: {
+    wired: boolean;
+    mode: "directory" | "scripts" | null;
+    dir: string | null;
+    instances: number;
+  };
   unwired: Verb[];
 }
 
@@ -119,6 +126,18 @@ export async function gatherProject(cwd: string): Promise<ProjectReport> {
     default: !!e.default,
     deploy: !!e.deploy,
   }));
+  const dataState = await listInstances(root);
+  const dataMode: "directory" | "scripts" | null = manifest.data
+    ? manifest.data.dir
+      ? "directory"
+      : "scripts"
+    : null;
+  const data = {
+    wired: !!manifest.data,
+    mode: dataMode,
+    dir: manifest.data?.dir ?? null,
+    instances: dataState.instances.length,
+  };
 
   // A verb is wired if its axis resolves it: build/test/lint from a package,
   // dev/deploy from a target.
@@ -141,6 +160,7 @@ export async function gatherProject(cwd: string): Promise<ProjectReport> {
     packages,
     targets,
     environments,
+    data,
     unwired,
   };
 }
@@ -197,6 +217,12 @@ function renderProject(p: ProjectReport): void {
 
   if (p.background.length > 0) {
     log.info(`  background    ${p.background.map((b) => `${b.name}(pid ${b.pid})`).join(", ")}`);
+  }
+
+  if (p.data.wired) {
+    const where = p.data.dir ? ` ${pc.dim(`(${p.data.dir})`)}` : "";
+    const n = p.data.instances ? `, ${p.data.instances} instance(s)` : "";
+    log.info(`  data          ${p.data.mode}${where}${n}`);
   }
 
   log.info("");
