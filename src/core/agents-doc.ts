@@ -140,7 +140,9 @@ not verbs.
 | \`deploy\` | Ship what changed (often unset until there's a real deploy path).   |
 
 \`dev\`/\`build\`/\`test\` operate on the *affected* targets by default. Run
-\`premo dev --background\` to detach (then \`premo stop\` / \`premo logs\`).
+\`premo dev --background\` to detach (then \`premo stop\` / \`premo logs\`), or
+\`premo dev --json\` to print one machine-readable descriptor (resolved ports/pids)
+to stdout — logs go to stderr — for a programmatic consumer.
 
 ## Resolved for this repo
 

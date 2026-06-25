@@ -16,6 +16,69 @@ import { resolveXcodeEnv } from "../xcode-env.js";
 
 const PREFIX_COLORS = [pc.cyan, pc.magenta, pc.yellow, pc.green, pc.blue];
 
+// One machine-readable line describing a single dev proc (DATA-DIRECTORIES.md's
+// orchestrator reads this to find the redirect target). port/pid/url are omitted
+// for a proc that has none (a non-serving target).
+interface ProcDescriptor {
+  name: string;
+  port?: number;
+  pid?: number;
+  url?: string;
+}
+
+interface DevDescriptor {
+  name: string;
+  target: string;
+  background: boolean;
+  procs: ProcDescriptor[];
+}
+
+function describeProc(
+  label: string,
+  port: number | undefined,
+  pid: number | undefined,
+): ProcDescriptor {
+  return {
+    name: label,
+    ...(port !== undefined ? { port } : {}),
+    ...(pid !== undefined && pid >= 0 ? { pid } : {}),
+    ...(port !== undefined ? { url: `http://localhost:${port}` } : {}),
+  };
+}
+
+// The one descriptor a --json run prints to stdout, the moment its procs are
+// spawned and ports resolved (no readiness wait — the consumer probes).
+function emitDescriptor(
+  ctx: Context,
+  target: { name: string },
+  background: boolean,
+  procs: ProcDescriptor[],
+): void {
+  const descriptor: DevDescriptor = {
+    name: ctx.manifest.name,
+    target: target.name,
+    background,
+    procs,
+  };
+  log.json(descriptor);
+}
+
+// In --json mode stdout is reserved for the single descriptor, so every human line
+// is rerouted to stderr. error/json are unchanged: error already writes to stderr,
+// and json IS the descriptor we deliberately put on stdout.
+function stderrLog(): typeof log {
+  const w = (s: string): void => void process.stderr.write(s + "\n");
+  return {
+    info: w,
+    step: (m: string) => w(pc.cyan(`→ ${m}`)),
+    ok: (m: string) => w(pc.green(`✓ ${m}`)),
+    warn: (m: string) => w(pc.yellow(`! ${m}`)),
+    error: log.error,
+    dim: (m: string) => w(pc.dim(m)),
+    json: log.json,
+  };
+}
+
 // Split a `dev` invocation's passthrough args from its [target]. Commander erases
 // the `--` boundary and binds [target] to the first operand even when that operand
 // lives *after* `--` — so when `--` is present we take everything after it as
@@ -40,6 +103,10 @@ export function register(program: Command): void {
     )
     .argument("[target]", "run a single target")
     .option("--background", "run detached; manage with `premo logs` / `premo stop`")
+    .option(
+      "--json",
+      "emit one machine-readable descriptor (ports/pids) to stdout; logs go to stderr",
+    )
     .option("--data <handle>", "run against an isolated data instance (see `premo data`)")
     .option("-e, --env <name>", "environment to run (e.g. dev | prod); see premo.json")
     .option("--device <name>", "destination device/simulator (xcode projects)")
@@ -51,6 +118,7 @@ export function register(program: Command): void {
         targetArg: string | undefined,
         opts: {
           background?: boolean;
+          json?: boolean;
           data?: string;
           env?: string;
           device?: string;
@@ -88,6 +156,9 @@ export function register(program: Command): void {
           !!opts.background,
           { ...xcodeEnv, ...dataEnv },
           passthrough,
+          {
+            json: !!opts.json,
+          },
         );
       },
     );
@@ -99,7 +170,11 @@ async function runAdoptedDev(
   background: boolean,
   extraEnv: NodeJS.ProcessEnv = {},
   passthrough: string[] = [],
+  { json = false }: { json?: boolean } = {},
 ): Promise<void> {
+  // Human output goes to stderr in --json mode so stdout carries only the
+  // descriptor; the human logger is `log` verbatim otherwise (no behavior change).
+  const human = json ? stderrLog() : log;
   const targets = await resolveTargets(ctx.root, ctx.manifest);
 
   let target;
@@ -116,11 +191,13 @@ async function runAdoptedDev(
     target = defaultTarget(targets);
     if (!target) {
       if (targets.length === 0) {
-        log.warn("No `dev` target resolved for this project.");
-        log.dim("  add a package with a dev script, a target in premo.json, or run `premo adopt`.");
+        human.warn("No `dev` target resolved for this project.");
+        human.dim(
+          "  add a package with a dev script, a target in premo.json, or run `premo adopt`.",
+        );
       } else {
         log.error(`Multiple targets — pick one: ${targets.map((t) => t.name).join(", ")}`);
-        log.dim('  or mark one "default": true in premo.json.');
+        human.dim('  or mark one "default": true in premo.json.');
       }
       process.exitCode = 1;
       return;
@@ -164,12 +241,19 @@ async function runAdoptedDev(
       process.exitCode = 1;
       return;
     }
+    if (json) {
+      // A CLI target's stdout IS its output; there are no ports to report and we
+      // can't co-opt stdout for a descriptor without corrupting that output.
+      log.error("`--json` isn't supported for a CLI project (it has no ports to report).");
+      process.exitCode = 1;
+      return;
+    }
     await runCommandDev(runnables[0]!, envFor(runnables[0]!), passthrough);
     return;
   }
 
   if (passthrough.length > 0) {
-    log.warn("`-- <args>` passthrough only applies to CLI projects; ignoring.");
+    human.warn("`-- <args>` passthrough only applies to CLI projects; ignoring.");
   }
 
   if (background) {
@@ -180,17 +264,20 @@ async function runAdoptedDev(
       process.exitCode = 1;
       return;
     }
+    const spawned: ProcDescriptor[] = [];
     try {
       for (const r of runnables) {
         const proc = await spawnDetached(ctx.root, r.label, r.command, r.cwd, envFor(r));
-        log.ok(`${r.label} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`);
+        spawned.push(describeProc(r.label, portFor(r), proc.pid));
+        human.ok(`${r.label} → pid ${proc.pid}, logs: ${path.relative(ctx.root, proc.logPath)}`);
       }
     } catch (err) {
       log.error(`Couldn't start the background process: ${(err as Error).message}`);
       process.exitCode = 1;
       return;
     }
-    log.dim("  `premo logs` to tail, `premo stop` to stop.");
+    human.dim("  `premo logs` to tail, `premo stop` to stop.");
+    if (json) emitDescriptor(ctx, target, true, spawned);
     return;
   }
 
@@ -201,6 +288,9 @@ async function runAdoptedDev(
   const xcodeDevice = !!extraEnv.PREMO_XCODE_DEVICE_UDID;
   let lockDetected = false;
 
+  // In --json mode stdout is reserved for the descriptor, so child logs (like every
+  // human line) are prefixed onto stderr instead.
+  const childOut: NodeJS.WriteStream = json ? process.stderr : process.stdout;
   let children: ResultPromise[] = [];
   const spawnAll = () => {
     children = [];
@@ -211,7 +301,7 @@ async function runAdoptedDev(
       // Multi-line commands (e.g. the xcode build/run script) would flood the
       // line; show just the process label in that case.
       const portTag = portFor(r) !== undefined ? pc.dim(` :${portFor(r)}`) : "";
-      log.step(
+      human.step(
         (r.command.includes("\n") ? `Starting ${r.label}` : `Starting ${r.label} (${r.command})`) +
           portTag,
       );
@@ -228,7 +318,7 @@ async function runAdoptedDev(
         if (xcodeDevice && !lockDetected && isDeviceLockedError(b.toString("utf8"))) {
           lockDetected = true;
         }
-        prefixWrite(prefix, b, process.stdout);
+        prefixWrite(prefix, b, childOut);
       };
       proc.stdout?.on("data", onChunk);
       proc.stderr?.on("data", onChunk);
@@ -291,10 +381,24 @@ async function runAdoptedDev(
   // Per-process ports (a composite target runs several); fall back to the single
   // target/project base when no proc carries its own.
   const ports = [...new Set(runnables.map(portFor).filter((p): p is number => p !== undefined))];
-  log.ok(interactive ? "dev up — press r to restart, q to quit" : "dev up — Ctrl-C to stop");
-  if (ports.length > 0) log.dim(`  ports: ${ports.join(", ")}`);
 
-  if (interactive) {
+  // Emit the descriptor as soon as the procs are spawned and ports are resolved —
+  // before the wait loop and before any readiness; the consumer probes for that.
+  if (json) {
+    emitDescriptor(
+      ctx,
+      target,
+      false,
+      runnables.map((r, i) => describeProc(r.label, portFor(r), children[i]?.pid)),
+    );
+  }
+
+  human.ok(interactive ? "dev up — press r to restart, q to quit" : "dev up — Ctrl-C to stop");
+  if (ports.length > 0) human.dim(`  ports: ${ports.join(", ")}`);
+
+  // No footer in --json mode (it would write to stdout); the interactive footer is
+  // for a human at a TTY, not a programmatic consumer.
+  if (interactive && !json) {
     const portStr = ports.length > 0 ? ` · :${ports.join(" :")}` : "";
     footer = installFooter(` premo dev · r restart · q quit${portStr} `);
   }
@@ -315,7 +419,7 @@ async function runAdoptedDev(
     const ev = await Promise.race(waits);
 
     if (ev.kind === "restart") {
-      log.step(awaitingUnlock ? "Retrying…" : "Restarting…");
+      human.step(awaitingUnlock ? "Retrying…" : "Restarting…");
       awaitingUnlock = false;
       await killChildren();
       control = armControl();
@@ -330,7 +434,7 @@ async function runAdoptedDev(
     if (xcodeDevice && lockDetected && ev.code !== 0) {
       if (interactive) {
         awaitingUnlock = true;
-        log.warn("Device is locked. Unlock it, then press r to retry (q to quit).");
+        human.warn("Device is locked. Unlock it, then press r to retry (q to quit).");
         continue;
       }
       log.error("Device is locked — unlock it and run `premo dev` again.");
