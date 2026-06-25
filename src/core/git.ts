@@ -18,6 +18,18 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
   return (await gitRoot(cwd)) !== null;
 }
 
+// The main working tree's absolute path — the same for every linked worktree of a
+// repo (the first record of `git worktree list` is always the main tree). This is
+// premo's cross-worktree project identity for the data axis: all checkouts of one
+// repo resolve to one data namespace. Null outside a git repo (caller falls back
+// to the working-tree path).
+export async function mainWorktree(cwd: string): Promise<string | null> {
+  const out = await git(cwd, ["worktree", "list", "--porcelain"]);
+  if (!out) return null;
+  const line = out.split("\n").find((l) => l.startsWith("worktree "));
+  return line ? line.slice("worktree ".length).trim() : null;
+}
+
 export async function refExists(root: string, ref: string): Promise<boolean> {
   return (await git(root, ["rev-parse", "--verify", "--quiet", ref])) !== null;
 }

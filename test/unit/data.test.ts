@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, writeFile, mkdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execa } from "execa";
 import { ProjectManifest } from "../../src/manifest/types.js";
 import {
   mintInstance,
@@ -11,8 +12,21 @@ import {
   dataRunEnv,
   liveDataEnv,
   instanceDir,
+  dataHome,
   DataError,
 } from "../../src/core/data.js";
+
+// The data registry + instance dirs now live in premo's host-global home, so pin
+// PREMO_HOME to a throwaway dir per test (never the real ~/.premo).
+let savedHome: string | undefined;
+beforeEach(async () => {
+  savedHome = process.env.PREMO_HOME;
+  process.env.PREMO_HOME = await mkdtemp(path.join(tmpdir(), "premo-home-data-"));
+});
+afterEach(() => {
+  if (savedHome === undefined) delete process.env.PREMO_HOME;
+  else process.env.PREMO_HOME = savedHome;
+});
 
 async function root(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "premo-data-"));
@@ -33,22 +47,32 @@ describe("data — directory adapter", () => {
     const m = dirManifest();
     const inst = await mintInstance(dir, m, {});
     expect(inst.handle).toMatch(/^d_[0-9a-f]{6}$/);
-    expect(existsSync(instanceDir(dir, inst.handle))).toBe(true);
+    expect(existsSync(await instanceDir(dir, inst.handle))).toBe(true);
     const state = await listInstances(dir);
     expect(state.instances.map((i) => i.handle)).toEqual([inst.handle]);
+  });
+
+  it("instances live in the global home, not the repo", async () => {
+    const dir = await root();
+    const inst = await mintInstance(dir, dirManifest(), {});
+    const home = await dataHome(dir);
+    // Under $PREMO_HOME/data/<slug>/, never inside the checkout.
+    expect(home.startsWith(process.env.PREMO_HOME!)).toBe(true);
+    expect(await instanceDir(dir, inst.handle)).toBe(path.join(home, inst.handle));
+    expect(existsSync(path.join(dir, ".premo", "data"))).toBe(false);
   });
 
   it("clone copies a source instance's contents", async () => {
     const dir = await root();
     const m = dirManifest();
     const src = await mintInstance(dir, m, { name: "src" });
-    await writeFile(path.join(instanceDir(dir, src.handle), "marker.txt"), "hello");
+    await writeFile(path.join(await instanceDir(dir, src.handle), "marker.txt"), "hello");
 
     const clone = await mintInstance(dir, m, { from: src.handle, name: "copy" });
     expect(clone.from).toBe(src.handle);
-    expect(await readFile(path.join(instanceDir(dir, clone.handle), "marker.txt"), "utf8")).toBe(
-      "hello",
-    );
+    expect(
+      await readFile(path.join(await instanceDir(dir, clone.handle), "marker.txt"), "utf8"),
+    ).toBe("hello");
   });
 
   it("clone of `live` captures the working dir (golden bootstrap)", async () => {
@@ -59,7 +83,7 @@ describe("data — directory adapter", () => {
 
     const ref = await mintInstance(dir, m, { from: "live", name: "golden" });
     expect(ref.from).toBe("live");
-    expect(await readFile(path.join(instanceDir(dir, ref.handle), "seed.txt"), "utf8")).toBe(
+    expect(await readFile(path.join(await instanceDir(dir, ref.handle), "seed.txt"), "utf8")).toBe(
       "golden",
     );
   });
@@ -68,12 +92,13 @@ describe("data — directory adapter", () => {
     const dir = await root();
     const m = dirManifest();
     const inst = await mintInstance(dir, m, {});
+    const idir = await instanceDir(dir, inst.handle);
 
     const runEnv = await dataRunEnv(dir, m, inst.handle);
     expect(runEnv).toEqual({
       PREMO_DATA_HANDLE: inst.handle,
-      PREMO_DATA_DIR: instanceDir(dir, inst.handle),
-      DATA_DIR: instanceDir(dir, inst.handle),
+      PREMO_DATA_DIR: idir,
+      DATA_DIR: idir,
     });
 
     expect(liveDataEnv(dir, m)).toEqual({
@@ -92,7 +117,7 @@ describe("data — directory adapter", () => {
     const m = dirManifest();
     const inst = await mintInstance(dir, m, {});
     expect(await deleteInstance(dir, m, inst.handle)).toBe(true);
-    expect(existsSync(instanceDir(dir, inst.handle))).toBe(false);
+    expect(existsSync(await instanceDir(dir, inst.handle))).toBe(false);
     expect((await listInstances(dir)).instances).toEqual([]);
     // already gone → quiet success, no throw
     expect(await deleteInstance(dir, m, inst.handle)).toBe(false);
@@ -104,6 +129,38 @@ describe("data — directory adapter", () => {
     await expect(mintInstance(dir, dirManifest(), { from: "d_ghost0" })).rejects.toBeInstanceOf(
       DataError,
     );
+  });
+});
+
+describe("data — shared across worktrees", () => {
+  // The point of the global home: a handle minted in one worktree is listable,
+  // clonable, and deletable from any other worktree of the same repo.
+  it("a sibling worktree sees, clones, and deletes the same instances", async () => {
+    const repo = await root();
+    await execa("git", ["init", "-q"], { cwd: repo });
+    await execa("git", ["config", "user.email", "t@t.dev"], { cwd: repo });
+    await execa("git", ["config", "user.name", "t"], { cwd: repo });
+    await writeFile(path.join(repo, "f"), "x");
+    await execa("git", ["add", "."], { cwd: repo });
+    await execa("git", ["commit", "-qm", "init"], { cwd: repo });
+
+    const wt = path.join(await mkdtemp(path.join(tmpdir(), "premo-wt-")), "linked");
+    await execa("git", ["worktree", "add", "-q", wt, "-b", "feature"], { cwd: repo });
+
+    const m = dirManifest();
+    // Both checkouts resolve to one data home (keyed by the main worktree).
+    expect(await dataHome(wt)).toBe(await dataHome(repo));
+
+    // Mint in the main checkout…
+    const golden = await mintInstance(repo, m, { name: "golden" });
+    // …visible from the linked worktree.
+    expect((await listInstances(wt)).instances.map((i) => i.handle)).toContain(golden.handle);
+
+    // Clone it from the worktree, then delete it from the main checkout.
+    const clone = await mintInstance(wt, m, { from: golden.handle, name: "pr-1" });
+    expect(clone.from).toBe(golden.handle);
+    expect(await deleteInstance(repo, m, clone.handle)).toBe(true);
+    expect((await listInstances(wt)).instances.map((i) => i.handle)).toEqual([golden.handle]);
   });
 });
 

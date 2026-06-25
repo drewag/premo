@@ -289,15 +289,18 @@ Mostly generic, lifted from `odo/email` (`scripts/tree.ts`):
 What §9.2 originally deferred now exists as the **`data` axis** — see
 **[DATA-DIRECTORIES.md](./DATA-DIRECTORIES.md)** for the full spec. The shape that
 made it tractable: premo owns an **opaque handle** per isolated data instance (and
-the registry, in `.premo-local.json`); the repo owns the physical state, addressed
-entirely by that handle. Two tiers, mirroring the verbs:
+the registry, in premo's host-global home keyed by the repo's main worktree — so
+handles are shared across every worktree of a repo and survive a worktree
+teardown); the repo owns the physical state, addressed entirely by that handle.
+Two tiers, mirroring the verbs:
 
 - **Wired scripts** (`data.create`/`clone`/`delete`) — the substrate-agnostic
   floor; premo runs them with `PREMO_DATA_HANDLE` (+ `PREMO_DATA_FROM`) injected.
   Every instance just persists until `delete` — premo has no reaper, so there's no
   ephemeral/retained distinction.
 - **The directory adapter** (`data.dir`) — premo manages each instance as a dir
-  under `.premo/data/<handle>` (copy-on-write clone / `rm`), and maps it onto the
+  under the global home (`$PREMO_HOME/data/<project>/<handle>`, copy-on-write clone
+  / `rm`), and maps it onto the
   app's native data var via `data.env` (e.g. `{ "DATA_DIR": "${PREMO_DATA_DIR}" }`)
   so the app needs no change. `premo adopt` auto-detects this for the common shape
   (a `*_DATA_DIR` compose/env var, a sqlite `file:` url, or a `process.env.*DATA_DIR`

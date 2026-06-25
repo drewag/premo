@@ -25,29 +25,9 @@ export interface StoredDestination {
   deviceUdid?: string;
 }
 
-// A tracked data instance (DATA-DIRECTORIES.md §3.4). premo owns this registry;
-// the `handle` is the only public reference. `from` records the source handle a
-// clone was made from (or `live`). Every instance persists until `delete` — premo
-// has no lifecycle/reaping policy of its own. `ref` is an optional opaque descriptor
-// a non-deterministic substrate's `create` script may emit on stdout for premo to
-// replay (reserved; see §3.3) — the directory adapter derives its path from the
-// handle and never sets it.
-export interface DataInstance {
-  handle: string;
-  name?: string;
-  from?: string | null;
-  createdAt: string;
-  ref?: string;
-}
-
-export interface DataState {
-  instances: DataInstance[];
-}
-
 export interface LocalState {
   background?: BackgroundProc[];
   lastXcodeDest?: StoredDestination;
-  data?: DataState;
 }
 
 function localPath(root: string): string {

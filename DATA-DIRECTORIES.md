@@ -41,8 +41,9 @@ the consumer side of `premo data …`.
 
 - Data **instances** are transient — spun up and torn down per preview, per
   experiment. They must **not** require a commit (so they're not in premo.json).
-  They belong in premo's _local/transient_ state (`.premo-local.json`, where
-  background procs already live), keyed and tracked by premo.
+  They belong in premo's _host-global transient_ state (`$PREMO_HOME/data/…`),
+  keyed by the repo's main worktree and tracked by premo — so a handle minted in
+  one worktree is usable from every other worktree of the repo (§6 Q3/Q4).
 - What _is_ config is **how data is defined for this project** — wired commands
   (consistent with how `dev`/`build`/etc. are wired). premo.json says _how_ to
   create/clone/delete a data instance; premo tracks the instances themselves.
@@ -304,28 +305,30 @@ for the day an id-assigning adapter needs it.
 
 - **`premo.json` (committed)** — wires the `data` scripts (§3.1) or is **absent**
   (the adapter supplies them, §3.2). Consistent with how the verbs are wired.
-- **`.premo-local.json` (transient, gitignored)** — premo's instance registry, next
-  to `background` procs; never committed. premo owns it:
+- **The host-global home (transient)** — premo's instance registry, at
+  `$PREMO_HOME/data/<project>/registry.json` (default `~/.premo/…`); never
+  committed. Keyed by the repo's **main worktree** (resolved with `git worktree
+list`), so every linked worktree of a repo shares one namespace and instances
+  outlive any single worktree (§6 Q3/Q4). premo owns it:
 
 ```jsonc
+// ~/.premo/data/<project>/registry.json
 {
-  "background": [
-    /* … existing … */
+  "instances": [
+    { "handle": "d_golden", "name": "golden", "from": "live", "createdAt": "…" },
+    { "handle": "d_4f2a9c", "name": "pr-123", "from": "d_golden", "createdAt": "…" },
   ],
-  "data": {
-    "instances": [
-      { "handle": "d_golden", "name": "golden", "from": "live", "createdAt": "…" },
-      { "handle": "d_4f2a9c", "name": "pr-123", "from": "d_golden", "createdAt": "…" },
-    ],
-  },
 }
 ```
 
-This is what lets `delete`/`list`/`clone` work without the consumer or the scripts
-tracking anything. Any substrate-specific location/id is **adapter-internal** — the
-directory adapter derives its path from the handle; an id-assigning adapter (§3.3)
-stores its descriptor here — but neither is ever surfaced in `--json`. The handle is
-the only public reference.
+Mutations take a file lock (shared with the port registry) so two worktrees
+minting at once can't clobber the registry. This is what lets `delete`/`list`/
+`clone` work without the consumer or the scripts tracking anything — and work
+from _any_ worktree. Any substrate-specific location/id is **adapter-internal** — the
+directory adapter derives its path from the handle (an instance dir under
+`$PREMO_HOME/data/<project>/<handle>`, so it too survives a worktree teardown); an
+id-assigning adapter (§3.3) stores its descriptor here — but neither is ever
+surfaced in `--json`. The handle is the only public reference.
 
 ---
 
@@ -377,12 +380,17 @@ primitive" relationship premo+orchestrator already have for worktrees.
    from premo — was the original §6 Q1.)_
 2. **Adapter vs handle-contract-only for v1 — resolved: both.** Shipped the
    directory adapter (§3.2) alongside the wired handle contract (§3.1).
-3. **Instance storage location.** Instances live under the repo's `.premo/data/`
-   today (gitignored). A global `~/.premo/data/<project>/` would let them survive a
-   worktree teardown — open if/when worktree-scoped data matters.
-4. **Handle scope.** Are handles project-scoped (the consumer always pairs them
-   with a project/cwd) or globally unique? Project-scoped is simpler and matches
-   how `premo` commands already run in a project context.
+3. **Instance storage location — resolved: host-global.** Both the registry and
+   the directory adapter's instance dirs live under `$PREMO_HOME/data/<project>/`
+   (default `~/.premo/…`), not in the checkout. So instances survive a worktree
+   teardown and a clone made in one worktree is reachable from the next — which is
+   exactly what the orchestrator's detached-worktree-per-PR model needs.
+4. **Handle scope — resolved: per-repo, cross-worktree.** The namespace is keyed by
+   the repo's **main worktree** (`git worktree list`; falls back to the checkout
+   path outside git), so every linked worktree of a repo shares one set of handles.
+   Handles themselves are random and effectively globally unique, but lookups are
+   scoped to the project — a consumer still runs `premo data …` in a project
+   context, it just no longer matters _which_ worktree.
 5. **`--data` + `--port-base` together.** Confirm both land as orthogonal
    orchestrator-supplied parameters on `premo dev` (and `premo ports`/`premo data`
    stay independently queryable), so the consumer composes `(worktree, port-base,

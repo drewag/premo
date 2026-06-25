@@ -1,7 +1,8 @@
-import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { premoHome } from "./home.js";
+import { withFileLock } from "./lockfile.js";
 import {
   DEFAULT_BASE_MIN,
   DEFAULT_BASE_MAX,
@@ -25,7 +26,7 @@ interface RegistryFile {
 }
 
 export function registryDir(): string {
-  return process.env.PREMO_HOME ?? path.join(os.homedir(), ".premo");
+  return premoHome();
 }
 
 export function registryPath(): string {
@@ -50,39 +51,9 @@ async function save(data: RegistryFile): Promise<void> {
 
 // The registry is host-global, so two `premo` processes adopting different
 // projects at once would otherwise race the load→mutate→save and clobber one
-// another's allocation. Serialize the mutating section with an exclusive-create
-// lock file. Bounded wait: on timeout we assume a crashed holder left a stale
-// lock, drop it, and proceed — better a tiny race window than a hung `adopt`.
-const LOCK_RETRY_MS = 20;
-const LOCK_TIMEOUT_MS = 2000;
-
-function lockPath(): string {
-  return path.join(registryDir(), "registry.lock");
-}
-
-async function withLock<T>(fn: () => Promise<T>): Promise<T> {
-  await mkdir(registryDir(), { recursive: true });
-  const file = lockPath();
-  const deadline = Date.now() + LOCK_TIMEOUT_MS;
-  for (;;) {
-    try {
-      const handle = await open(file, "wx"); // exclusive create — fails if held
-      await handle.close();
-      break;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      if (Date.now() >= deadline) {
-        await rm(file, { force: true }); // assume stale; steal it
-        break;
-      }
-      await new Promise((r) => setTimeout(r, LOCK_RETRY_MS));
-    }
-  }
-  try {
-    return await fn();
-  } finally {
-    await rm(file, { force: true });
-  }
+// another's allocation. Serialize the mutating section with a shared file lock.
+function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  return withFileLock(path.join(registryDir(), "registry.lock"), fn);
 }
 
 export async function getAllocation(projectPath: string): Promise<PortAllocationRecord | null> {

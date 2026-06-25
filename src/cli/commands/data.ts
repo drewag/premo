@@ -2,9 +2,14 @@ import { Command } from "commander";
 import { requireProjectRoot } from "../guard.js";
 import { loadProject } from "../../core/project.js";
 import { log } from "../../core/logger.js";
-import { mintInstance, deleteInstance, listInstances, DataError } from "../../core/data.js";
+import {
+  mintInstance,
+  deleteInstance,
+  listInstances,
+  DataError,
+  type DataInstance,
+} from "../../core/data.js";
 import type { ProjectManifest } from "../../manifest/types.js";
-import type { DataInstance } from "../../core/local.js";
 
 // premo's first subcommand group (DATA-DIRECTORIES.md §1.1): `data <action>` is a
 // resource namespace, kept off the closed verb set on purpose. Every instance

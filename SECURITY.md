@@ -21,8 +21,9 @@ What premo does and doesn't do:
 - **No telemetry, no network calls of its own.** (Your project's commands may do
   whatever they do.)
 - **Writes only within the project** (`premo.json`, `.premo-local.json`,
-  `.runtime/` logs, the xcode build cache) plus a per-machine **port registry**
-  under `~/.premo` (or `$PREMO_HOME`). Uninstalling premo leaves the repo working.
+  `.runtime/` logs, the xcode build cache) plus a per-machine area under `~/.premo`
+  (or `$PREMO_HOME`): the **port registry** and the **data axis** registry +
+  instances. Uninstalling premo leaves the repo working.
 
 ## Reporting a vulnerability
 

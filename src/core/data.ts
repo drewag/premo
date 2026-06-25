@@ -1,20 +1,45 @@
 import { execa } from "execa";
 import { existsSync } from "node:fs";
-import { mkdir, rm, cp } from "node:fs/promises";
+import { mkdir, rm, cp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import type { ProjectManifest } from "../manifest/types.js";
-import { loadLocal, saveLocal, type DataInstance, type DataState } from "./local.js";
 import { envFileVars, configEnv, interpolateEnv } from "./env.js";
+import { premoHome } from "./home.js";
+import { withFileLock } from "./lockfile.js";
+import { mainWorktree } from "./git.js";
+import { sanitizeProjectName } from "./project.js";
 
 // The data axis (DATA-DIRECTORIES.md). premo owns an opaque handle per isolated
-// data instance + the registry (in .premo-local.json); the repo owns the physical
-// state, addressed by the handle. Either wired lifecycle scripts (Contract A) or
-// the built-in directory adapter (Contract B, `data.dir`) realize an instance.
+// data instance + the registry; the repo owns the physical state, addressed by
+// the handle. Either wired lifecycle scripts (Contract A) or the built-in
+// directory adapter (Contract B, `data.dir`) realize an instance.
+//
+// Both the registry and the directory adapter's instance dirs live in premo's
+// host-global home, keyed by the project's MAIN worktree — *not* the current
+// checkout. So a handle minted in one worktree is visible (`list`/`delete`) and
+// clonable from every other worktree of the same repo, and instances survive a
+// worktree teardown. (Ports are deliberately the opposite — per-worktree — so the
+// two don't share a key.)
 
-// premo-owned instance storage for the directory adapter: a directory per handle
-// under the gitignored `.premo/` tree.
-export const DATA_ROOT = path.join(".premo", "data");
+// A tracked data instance (DATA-DIRECTORIES.md §3.4). premo owns this registry;
+// the `handle` is the only public reference. `from` records the source handle a
+// clone was made from (or `live`). Every instance persists until `delete` — premo
+// has no lifecycle/reaping policy of its own. `ref` is an optional opaque descriptor
+// a non-deterministic substrate's `create` script may emit on stdout for premo to
+// replay (reserved; see §3.3) — the directory adapter derives its path from the
+// handle and never sets it.
+export interface DataInstance {
+  handle: string;
+  name?: string;
+  from?: string | null;
+  createdAt: string;
+  ref?: string;
+}
+
+export interface DataState {
+  instances: DataInstance[];
+}
 
 // The reserved source name for "the project's live working data" (`data.dir`),
 // so a golden dataset can be bootstrapped straight from a hand-curated one:
@@ -23,9 +48,73 @@ export const LIVE = "live";
 
 export class DataError extends Error {}
 
-export function instanceDir(root: string, handle: string): string {
-  return path.join(root, DATA_ROOT, handle);
+// --- the global data home (keyed by the main worktree) -----------------------
+
+// A repo's cross-worktree identity: the main worktree's absolute path, the same
+// from any linked worktree. Outside a git repo, fall back to the checkout path
+// (a non-git project is its own single "worktree").
+async function projectKey(root: string): Promise<string> {
+  const main = await mainWorktree(root);
+  return path.resolve(main ?? root);
 }
+
+// A human-browsable, collision-resistant directory name for the project: the main
+// worktree's basename + a short hash of its full path (two repos named `app` in
+// different parents get distinct homes).
+function projectSlug(key: string): string {
+  const base = sanitizeProjectName(path.basename(key)) || "project";
+  const hash = createHash("sha256").update(key).digest("hex").slice(0, 8);
+  return `${base}-${hash}`;
+}
+
+// `$PREMO_HOME/data/<slug>/` — the registry (`registry.json`) and the directory
+// adapter's per-handle instance dirs both live here, shared across worktrees.
+export async function dataHome(root: string): Promise<string> {
+  return path.join(premoHome(), "data", projectSlug(await projectKey(root)));
+}
+
+function instanceDirAt(home: string, handle: string): string {
+  return path.join(home, handle);
+}
+
+// The on-disk directory for a directory-adapter instance. Async because it
+// resolves the project's global home first.
+export async function instanceDir(root: string, handle: string): Promise<string> {
+  return instanceDirAt(await dataHome(root), handle);
+}
+
+function registryFile(home: string): string {
+  return path.join(home, "registry.json");
+}
+
+async function loadData(home: string): Promise<DataState> {
+  const file = registryFile(home);
+  if (!existsSync(file)) return { instances: [] };
+  try {
+    const raw = JSON.parse(await readFile(file, "utf8")) as Partial<DataState>;
+    return { instances: raw.instances ?? [] };
+  } catch {
+    return { instances: [] };
+  }
+}
+
+async function saveData(home: string, data: DataState): Promise<void> {
+  await mkdir(home, { recursive: true });
+  await writeFile(registryFile(home), JSON.stringify(data, null, 2) + "\n", "utf8");
+}
+
+// The registry is shared across a repo's worktrees, so two `premo data` calls from
+// two worktrees would otherwise race the load→mutate→save. Hold the lock only for
+// that fast critical section — never across the slow copy/script (see lockfile.ts).
+function withLock<T>(home: string, fn: () => Promise<T>): Promise<T> {
+  return withFileLock(path.join(home, "registry.lock"), fn);
+}
+
+export function findInstance(data: DataState, handle: string): DataInstance | undefined {
+  return data.instances.find((i) => i.handle === handle);
+}
+
+// --- minting, deleting, listing ----------------------------------------------
 
 type Action = "create" | "clone" | "delete";
 
@@ -34,20 +123,6 @@ function mintHandle(existing: Set<string>): string {
     const handle = "d_" + randomBytes(4).toString("hex").slice(0, 6);
     if (!existing.has(handle)) return handle;
   }
-}
-
-async function loadData(root: string): Promise<DataState> {
-  return (await loadLocal(root)).data ?? { instances: [] };
-}
-
-async function saveData(root: string, data: DataState): Promise<void> {
-  const state = await loadLocal(root);
-  state.data = data;
-  await saveLocal(root, state);
-}
-
-export function findInstance(data: DataState, handle: string): DataInstance | undefined {
-  return data.instances.find((i) => i.handle === handle);
 }
 
 // Whether this project can do `action` at all: a wired script for it, or the
@@ -98,9 +173,11 @@ async function runScript(
 }
 
 // Resolve a source name (a handle, or the reserved `live`) to its handle label and
-// — for the directory adapter — its on-disk path.
+// — for the directory adapter — its on-disk path. `live` is the *current*
+// checkout's working data (root-relative); a handle resolves into the global home.
 function resolveSource(
   root: string,
+  home: string,
   manifest: ProjectManifest,
   data: DataState,
   from: string,
@@ -111,7 +188,7 @@ function resolveSource(
     return { fromLabel: LIVE, fromPath: path.join(root, dir) };
   }
   if (!findInstance(data, from)) throw new DataError(`unknown source handle "${from}"`);
-  return { fromLabel: from, fromPath: instanceDir(root, from) };
+  return { fromLabel: from, fromPath: instanceDirAt(home, from) };
 }
 
 export interface MintOpts {
@@ -133,27 +210,32 @@ export async function mintInstance(
   if (!supports(manifest, action))
     throw new DataError(`\`${action}\` is not wired (add a \`${action}\` command or \`dir\`)`);
 
-  const state = await loadData(root);
+  const home = await dataHome(root);
+  const state = await loadData(home);
+  // Handles are random, so this set is just a cosmetic uniqueness guard; the
+  // authoritative append happens under the lock below.
   const handle = mintHandle(new Set(state.instances.map((i) => i.handle)));
 
   let fromLabel: string | null = null;
   let fromPath: string | undefined;
   if (opts.from) {
-    const src = resolveSource(root, manifest, state, opts.from);
+    const src = resolveSource(root, home, manifest, state, opts.from);
     fromLabel = src.fromLabel;
     fromPath = src.fromPath;
   }
 
+  // The slow part (script / CoW copy) runs WITHOUT the registry lock so a big
+  // clone never trips the lock's staleness timeout for a concurrent worktree.
   const wired = data[action];
   if (wired) {
     const injected: Record<string, string> = { PREMO_DATA_HANDLE: handle };
-    if (data.dir) injected.PREMO_DATA_DIR = instanceDir(root, handle);
+    if (data.dir) injected.PREMO_DATA_DIR = instanceDirAt(home, handle);
     if (fromLabel) injected.PREMO_DATA_FROM = fromLabel;
     if (fromPath && data.dir) injected.PREMO_DATA_FROM_DIR = fromPath;
     await runScript(root, manifest, wired, injected);
   } else {
     // Directory adapter built-in.
-    const dst = instanceDir(root, handle);
+    const dst = instanceDirAt(home, handle);
     if (fromPath) {
       if (!existsSync(fromPath)) throw new DataError(`source has no data at ${fromPath}`);
       await copyTree(fromPath, dst);
@@ -168,8 +250,11 @@ export async function mintInstance(
     from: fromLabel,
     createdAt: new Date().toISOString(),
   };
-  state.instances.push(instance);
-  await saveData(root, state);
+  await withLock(home, async () => {
+    const fresh = await loadData(home);
+    fresh.instances.push(instance);
+    await saveData(home, fresh);
+  });
   return instance;
 }
 
@@ -180,27 +265,32 @@ export async function deleteInstance(
   manifest: ProjectManifest,
   handle: string,
 ): Promise<boolean> {
-  const state = await loadData(root);
-  const inst = findInstance(state, handle);
-  if (!inst) return false;
+  const home = await dataHome(root);
+  const state = await loadData(home);
+  if (!findInstance(state, handle)) return false;
 
   const wired = manifest.data?.delete;
   if (wired) {
     const injected: Record<string, string> = { PREMO_DATA_HANDLE: handle };
-    if (manifest.data?.dir) injected.PREMO_DATA_DIR = instanceDir(root, handle);
+    if (manifest.data?.dir) injected.PREMO_DATA_DIR = instanceDirAt(home, handle);
     await runScript(root, manifest, wired, injected);
   } else if (manifest.data?.dir) {
-    await rm(instanceDir(root, handle), { recursive: true, force: true });
+    await rm(instanceDirAt(home, handle), { recursive: true, force: true });
   }
 
-  state.instances = state.instances.filter((i) => i.handle !== handle);
-  await saveData(root, state);
+  await withLock(home, async () => {
+    const fresh = await loadData(home);
+    fresh.instances = fresh.instances.filter((i) => i.handle !== handle);
+    await saveData(home, fresh);
+  });
   return true;
 }
 
 export async function listInstances(root: string): Promise<DataState> {
-  return loadData(root);
+  return loadData(await dataHome(root));
 }
+
+// --- run-env injection -------------------------------------------------------
 
 // The directory-adapter env for a given absolute instance/live dir: PREMO_DATA_DIR
 // plus the app's native vars (`data.env`) with `${PREMO_DATA_DIR}` interpolated, so
@@ -222,10 +312,11 @@ export async function dataRunEnv(
   manifest: ProjectManifest,
   handle: string,
 ): Promise<Record<string, string> | null> {
-  const state = await loadData(root);
+  const home = await dataHome(root);
+  const state = await loadData(home);
   if (!findInstance(state, handle)) return null;
   const env: Record<string, string> = { PREMO_DATA_HANDLE: handle };
-  if (manifest.data?.dir) Object.assign(env, dirEnv(manifest, instanceDir(root, handle)));
+  if (manifest.data?.dir) Object.assign(env, dirEnv(manifest, instanceDirAt(home, handle)));
   return env;
 }
 
