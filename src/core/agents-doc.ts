@@ -141,8 +141,9 @@ not verbs.
 
 \`dev\`/\`build\`/\`test\` operate on the *affected* targets by default. Run
 \`premo dev --background\` to detach (then \`premo stop\` / \`premo logs\`), or
-\`premo dev --json\` to print one machine-readable descriptor (resolved ports/pids)
-to stdout — logs go to stderr — for a programmatic consumer.
+\`premo dev --json\` to print one machine-readable descriptor (resolved ports/pids,
+or the xcode simulator/device destination) to stdout — logs go to stderr — for a
+programmatic consumer.
 
 ## Resolved for this repo
 

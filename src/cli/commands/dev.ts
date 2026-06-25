@@ -26,11 +26,44 @@ interface ProcDescriptor {
   url?: string;
 }
 
+// An xcode run has no port/url; its "where" is the destination. We surface the
+// specific simulator/device id + scheme/bundleId so a consumer can find, launch,
+// or query the app (e.g. `xcrun simctl launch <udid> <bundleId>`).
+interface XcodeDescriptor {
+  scheme?: string;
+  destination: string; // the raw xcodebuild -destination value
+  platform?: string; // parsed from destination, e.g. "iOS Simulator" / "macOS"
+  udid?: string; // the specific simulator (boot) or physical device id
+  kind: "simulator" | "device" | "mac";
+  bundleId?: string;
+}
+
 interface DevDescriptor {
   name: string;
   target: string;
   background: boolean;
   procs: ProcDescriptor[];
+  xcode?: XcodeDescriptor;
+}
+
+// Build the xcode block from the PREMO_XCODE_* env premo already resolved for the
+// run (env.ts). Absent for a non-xcode run (no PREMO_XCODE_DEST).
+export function xcodeDescriptor(env: NodeJS.ProcessEnv): XcodeDescriptor | undefined {
+  const destination = env.PREMO_XCODE_DEST;
+  if (!destination) return undefined;
+  const bootUdid = env.PREMO_XCODE_BOOT_UDID;
+  const deviceUdid = env.PREMO_XCODE_DEVICE_UDID;
+  const udid = bootUdid ?? deviceUdid;
+  const kind: XcodeDescriptor["kind"] = bootUdid ? "simulator" : deviceUdid ? "device" : "mac";
+  const platform = destination.match(/platform=([^,]+)/)?.[1];
+  return {
+    ...(env.PREMO_XCODE_SCHEME ? { scheme: env.PREMO_XCODE_SCHEME } : {}),
+    destination,
+    ...(platform ? { platform } : {}),
+    ...(udid ? { udid } : {}),
+    kind,
+    ...(env.PREMO_XCODE_BUNDLE_ID ? { bundleId: env.PREMO_XCODE_BUNDLE_ID } : {}),
+  };
 }
 
 function describeProc(
@@ -53,12 +86,14 @@ function emitDescriptor(
   target: { name: string },
   background: boolean,
   procs: ProcDescriptor[],
+  xcode?: XcodeDescriptor,
 ): void {
   const descriptor: DevDescriptor = {
     name: ctx.manifest.name,
     target: target.name,
     background,
     procs,
+    ...(xcode ? { xcode } : {}),
   };
   log.json(descriptor);
 }
@@ -129,9 +164,13 @@ export function register(program: Command): void {
       ) => {
         const { target, passthrough } = splitPassthrough(process.argv, targetArg);
         const ctx = await ensureContext(process.cwd());
-        // Prompt for a destination interactively, unless detaching; remember it
-        // as this project's last-run device for next time.
-        const xcodeEnv = await resolveXcodeEnv(ctx, opts, !opts.background, true, target);
+        // Prompt for a destination interactively, unless detaching or emitting JSON
+        // (a programmatic consumer can't answer a picker, and the picker / its
+        // "last used" line would also corrupt stdout). --json resolves the xcode
+        // destination non-interactively: --device/--platform → xcode.defaultDestination
+        // → error. Remember the chosen destination as this project's last-run device.
+        const interactive = !opts.background && !opts.json;
+        const xcodeEnv = await resolveXcodeEnv(ctx, opts, interactive, true, target);
         if (xcodeEnv === null) {
           process.exitCode = 1;
           return;
@@ -175,6 +214,9 @@ async function runAdoptedDev(
   // Human output goes to stderr in --json mode so stdout carries only the
   // descriptor; the human logger is `log` verbatim otherwise (no behavior change).
   const human = json ? stderrLog() : log;
+  // The run's xcode destination (if any), resolved into extraEnv already; one per
+  // run, so it rides on the descriptor itself rather than per-proc.
+  const xcode = json ? xcodeDescriptor(extraEnv) : undefined;
   const targets = await resolveTargets(ctx.root, ctx.manifest);
 
   let target;
@@ -277,7 +319,7 @@ async function runAdoptedDev(
       return;
     }
     human.dim("  `premo logs` to tail, `premo stop` to stop.");
-    if (json) emitDescriptor(ctx, target, true, spawned);
+    if (json) emitDescriptor(ctx, target, true, spawned, xcode);
     return;
   }
 
@@ -390,6 +432,7 @@ async function runAdoptedDev(
       target,
       false,
       runnables.map((r, i) => describeProc(r.label, portFor(r), children[i]?.pid)),
+      xcode,
     );
   }
 
