@@ -117,12 +117,13 @@ describe("data — directory adapter", () => {
     const dir = await root();
     const m = dirManifest();
     const inst = await mintInstance(dir, m, {});
-    expect(await deleteInstance(dir, m, inst.handle)).toBe(true);
+    // delete returns the canonical handle removed…
+    expect(await deleteInstance(dir, m, inst.handle)).toBe(inst.handle);
     expect(existsSync(await instanceDir(dir, inst.handle))).toBe(false);
     expect((await listInstances(dir)).instances).toEqual([]);
-    // already gone → quiet success, no throw
-    expect(await deleteInstance(dir, m, inst.handle)).toBe(false);
-    expect(await deleteInstance(dir, m, "d_never0")).toBe(false);
+    // …and null on an already-gone / unknown ref (quiet, no throw)
+    expect(await deleteInstance(dir, m, inst.handle)).toBeNull();
+    expect(await deleteInstance(dir, m, "d_never0")).toBeNull();
   });
 
   it("rejects a clone from an unknown source", async () => {
@@ -130,6 +131,48 @@ describe("data — directory adapter", () => {
     await expect(mintInstance(dir, dirManifest(), { from: "d_ghost0" })).rejects.toBeInstanceOf(
       DataError,
     );
+  });
+});
+
+describe("data — referencing by name", () => {
+  it("dev --data resolves a name and injects the canonical handle", async () => {
+    const dir = await root();
+    const m = dirManifest();
+    const inst = await mintInstance(dir, m, { name: "golden" });
+
+    const byName = await dataRunEnv(dir, m, "golden");
+    const byHandle = await dataRunEnv(dir, m, inst.handle);
+    expect(byName).toEqual(byHandle);
+    // Even passed a name, the app sees the stable opaque handle.
+    expect(byName?.PREMO_DATA_HANDLE).toBe(inst.handle);
+  });
+
+  it("clone and delete accept a name", async () => {
+    const dir = await root();
+    const m = dirManifest();
+    const src = await mintInstance(dir, m, { name: "src" });
+    await writeFile(path.join(await instanceDir(dir, src.handle), "f.txt"), "x");
+
+    // clone FROM a name → lineage records the resolved handle, not the name.
+    const clone = await mintInstance(dir, m, { from: "src", name: "copy" });
+    expect(clone.from).toBe(src.handle);
+
+    expect(await deleteInstance(dir, m, "copy")).toBe(clone.handle);
+    expect((await listInstances(dir)).instances.map((i) => i.name)).toEqual(["src"]);
+  });
+
+  it("an ambiguous name is an error (dev/clone), and quietly false for delete-miss", async () => {
+    const dir = await root();
+    const m = dirManifest();
+    await mintInstance(dir, m, { name: "dup" });
+    await mintInstance(dir, m, { name: "dup" });
+
+    await expect(dataRunEnv(dir, m, "dup")).rejects.toBeInstanceOf(DataError);
+    await expect(mintInstance(dir, m, { from: "dup" })).rejects.toBeInstanceOf(DataError);
+    await expect(deleteInstance(dir, m, "dup")).rejects.toBeInstanceOf(DataError);
+    // an entirely unknown ref stays a quiet miss, not a throw
+    expect(await dataRunEnv(dir, m, "nope")).toBeNull();
+    expect(await deleteInstance(dir, m, "nope")).toBeNull();
   });
 });
 
@@ -178,7 +221,7 @@ describe("data — link (custom absolute path)", () => {
     await writeFile(path.join(ext, "keep.txt"), "keep");
 
     const inst = await linkInstance(dir, dirManifest(), ext);
-    expect(await deleteInstance(dir, dirManifest(), inst.handle)).toBe(true);
+    expect(await deleteInstance(dir, dirManifest(), inst.handle)).toBe(inst.handle);
     expect((await listInstances(dir)).instances).toEqual([]);
     // The external dir + its contents survive — premo never owned them.
     expect(existsSync(path.join(ext, "keep.txt"))).toBe(true);
@@ -230,7 +273,7 @@ describe("data — shared across worktrees", () => {
     // Clone it from the worktree, then delete it from the main checkout.
     const clone = await mintInstance(wt, m, { from: golden.handle, name: "pr-1" });
     expect(clone.from).toBe(golden.handle);
-    expect(await deleteInstance(repo, m, clone.handle)).toBe(true);
+    expect(await deleteInstance(repo, m, clone.handle)).toBe(clone.handle);
     expect((await listInstances(wt)).instances.map((i) => i.handle)).toEqual([golden.handle]);
   });
 });
@@ -257,7 +300,7 @@ describe("data — wired contract (no directory adapter)", () => {
     expect(await dataRunEnv(dir, m, inst.handle)).toEqual({ PREMO_DATA_HANDLE: inst.handle });
     expect(liveDataEnv(dir, m)).toEqual({});
 
-    expect(await deleteInstance(dir, m, inst.handle)).toBe(true);
+    expect(await deleteInstance(dir, m, inst.handle)).toBe(inst.handle);
     expect(existsSync(path.join(dir, `created-${inst.handle}`))).toBe(false);
   });
 

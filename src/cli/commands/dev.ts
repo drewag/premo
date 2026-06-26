@@ -7,7 +7,7 @@ import { ensureContext, type Context } from "../../core/context.js";
 import { resolveTargets, defaultTarget, type DevProc } from "../../core/targets.js";
 import { configEnv, envFileVars } from "../../core/env.js";
 import { spawnDetached } from "../../core/supervise.js";
-import { dataRunEnv, liveDataEnv } from "../../core/data.js";
+import { dataRunEnv, liveDataEnv, DataError } from "../../core/data.js";
 import { shq } from "../../core/shell.js";
 import { installFooter, type Footer } from "../../core/footer.js";
 import { isDeviceLockedError } from "../../core/xcode.js";
@@ -142,7 +142,7 @@ export function register(program: Command): void {
       "--json",
       "emit one machine-readable descriptor (ports/pids) to stdout; logs go to stderr",
     )
-    .option("--data <handle>", "run against an isolated data instance (see `premo data`)")
+    .option("--data <handle|name>", "run against an isolated data instance (see `premo data`)")
     .option("-e, --env <name>", "environment to run (e.g. dev | prod); see premo.json")
     .option("--device <name>", "destination device/simulator (xcode projects)")
     .option("--platform <name>", "destination platform: ios | macos | visionos (xcode projects)")
@@ -176,10 +176,19 @@ export function register(program: Command): void {
           return;
         }
         // Resolve the data instance (PREMO_DATA_HANDLE/_DIR) the same way: an
-        // explicit --data instance, else the project's live data dir (if any).
+        // explicit --data instance (by handle or name), else the project's live data
+        // dir (if any).
         let dataEnv: Record<string, string>;
         if (opts.data) {
-          const resolved = await dataRunEnv(ctx.root, ctx.manifest, opts.data);
+          let resolved: Record<string, string> | null;
+          try {
+            resolved = await dataRunEnv(ctx.root, ctx.manifest, opts.data);
+          } catch (err) {
+            if (!(err instanceof DataError)) throw err;
+            log.error(err.message); // an ambiguous name
+            process.exitCode = 1;
+            return;
+          }
           if (resolved === null) {
             log.error(`No data instance "${opts.data}". List them with \`premo data list\`.`);
             process.exitCode = 1;

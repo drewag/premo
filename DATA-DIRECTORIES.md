@@ -112,6 +112,10 @@ orthogonal; omitting `--data` ⇒ `premo dev` behaves exactly as today (additive
   instances.
 - `delete` is idempotent (deleting an unknown/already-gone handle succeeds quietly
   — teardown must never wedge a reaper).
+- Anywhere a handle is taken (`dev --data`, `clone`, `delete`), a human **`--name`**
+  label is accepted too, as a convenience. Handles are unique and win; a name
+  matching several instances is an error (use a handle). The handle stays the stable
+  token a programmatic consumer stores and passes back — names are for humans.
 
 ### 1.4 `--json` shapes (what the consumer parses)
 

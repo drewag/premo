@@ -16,7 +16,9 @@ import type { ProjectManifest } from "../../manifest/types.js";
 // resource namespace, kept off the closed verb set on purpose. Every instance
 // persists until `delete` — premo has no reaper, so there's no ephemeral/retained
 // distinction; a consumer that wants throwaway instances deletes them itself.
-// `clone`/`delete` take a required positional <handle>; `create` takes none.
+// `clone`/`delete` take a required positional reference — a handle or a `--name`
+// label (a name matching several instances is an error; use a handle) — `create`
+// takes none, and `link` takes a directory path.
 
 function notWired(json: boolean): void {
   if (json) {
@@ -93,7 +95,7 @@ export function register(program: Command): void {
   data
     .command("clone")
     .description("Mint a copy of an existing instance (or of the live working data).")
-    .argument("<handle>", "source instance (a handle, or `live` for the working data)")
+    .argument("<handle|name>", "source instance (a handle or name, or `live` for the working data)")
     .option("--name <label>", "a human label for the instance")
     .option("--json", "emit machine-readable JSON")
     .action((handle: string, opts: { name?: string; json?: boolean }) =>
@@ -126,16 +128,16 @@ export function register(program: Command): void {
   data
     .command("delete")
     .description("Tear down a data instance. Idempotent.")
-    .argument("<handle>", "the instance to delete")
+    .argument("<handle|name>", "the instance to delete (a handle or name)")
     .option("--json", "emit machine-readable JSON")
-    .action(async (handle: string, opts: { json?: boolean }) => {
+    .action(async (ref: string, opts: { json?: boolean }) => {
       const ctx = await requireData(!!opts.json);
       if (!ctx) return;
       try {
-        const existed = await deleteInstance(ctx.root, ctx.manifest, handle);
-        if (opts.json) log.json({ handle, deleted: existed });
-        else if (existed) log.ok(`deleted ${handle}`);
-        else log.dim(`${handle} — already gone`);
+        const handle = await deleteInstance(ctx.root, ctx.manifest, ref);
+        if (opts.json) log.json({ handle: handle ?? ref, deleted: handle !== null });
+        else if (handle) log.ok(`deleted ${handle}`);
+        else log.dim(`${ref} — already gone`);
       } catch (err) {
         if (!(err instanceof DataError)) throw err;
         if (opts.json) log.json({ error: err.message });

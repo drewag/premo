@@ -126,6 +126,25 @@ export function findInstance(data: DataState, handle: string): DataInstance | un
   return data.instances.find((i) => i.handle === handle);
 }
 
+// Resolve a user-supplied reference — an opaque handle OR a human `--name` label —
+// to a single instance. Handles are unique, so they win and are tried first; names
+// may be shared, so a name matching several instances is an explicit error (pick by
+// handle) rather than an arbitrary choice. Returns undefined when nothing matches.
+export function resolveRef(data: DataState, ref: string): DataInstance | undefined {
+  const byHandle = findInstance(data, ref);
+  if (byHandle) return byHandle;
+  const byName = data.instances.filter((i) => i.name === ref);
+  if (byName.length === 1) return byName[0];
+  if (byName.length > 1) {
+    throw new DataError(
+      `"${ref}" matches ${byName.length} instances (${byName
+        .map((i) => i.handle)
+        .join(", ")}); use a handle.`,
+    );
+  }
+  return undefined;
+}
+
 // --- minting, deleting, listing ----------------------------------------------
 
 type Action = "create" | "clone" | "delete";
@@ -199,9 +218,10 @@ function resolveSource(
     if (!dir) throw new DataError(`source "${LIVE}" needs a directory adapter (set data.dir)`);
     return { fromLabel: LIVE, fromPath: path.join(root, dir) };
   }
-  const inst = findInstance(data, from);
-  if (!inst) throw new DataError(`unknown source handle "${from}"`);
-  return { fromLabel: from, fromPath: resolvedDir(home, inst) };
+  const inst = resolveRef(data, from);
+  if (!inst) throw new DataError(`unknown source "${from}"`);
+  // Record lineage by the canonical handle even when the user passed a name.
+  return { fromLabel: inst.handle, fromPath: resolvedDir(home, inst) };
 }
 
 export interface MintOpts {
@@ -309,17 +329,19 @@ export async function linkInstance(
   return instance;
 }
 
-// Tear down an instance. Idempotent: an unknown/already-gone handle succeeds
-// quietly so a reaper never wedges. Returns whether anything was tracked.
+// Tear down an instance, referenced by handle or `--name`. Idempotent: an unknown/
+// already-gone ref succeeds quietly so a reaper never wedges. Returns the canonical
+// handle that was removed, or null if nothing matched.
 export async function deleteInstance(
   root: string,
   manifest: ProjectManifest,
-  handle: string,
-): Promise<boolean> {
+  ref: string,
+): Promise<string | null> {
   const home = await dataHome(root);
   const state = await loadData(home);
-  const inst = findInstance(state, handle);
-  if (!inst) return false;
+  const inst = resolveRef(state, ref);
+  if (!inst) return null;
+  const handle = inst.handle;
 
   // A `link`ed instance points at a directory premo doesn't own: never run teardown
   // (wired or built-in) against it — just drop it from the registry below.
@@ -339,7 +361,7 @@ export async function deleteInstance(
     fresh.instances = fresh.instances.filter((i) => i.handle !== handle);
     await saveData(home, fresh);
   });
-  return true;
+  return handle;
 }
 
 export async function listInstances(root: string): Promise<DataState> {
@@ -361,18 +383,20 @@ function dirEnv(manifest: ProjectManifest, dataDir: string): Record<string, stri
   return env;
 }
 
-// The env premo injects into a `dev --data <handle>` run: the opaque handle, plus
-// the directory-adapter vars for the instance. Returns null for an unknown handle.
+// The env premo injects into a `dev --data <ref>` run, where `ref` is a handle or a
+// `--name`: the canonical opaque handle (so the app sees a stable token even when a
+// name was passed), plus the directory-adapter vars for the instance. Returns null
+// for an unknown ref; throws DataError for an ambiguous name.
 export async function dataRunEnv(
   root: string,
   manifest: ProjectManifest,
-  handle: string,
+  ref: string,
 ): Promise<Record<string, string> | null> {
   const home = await dataHome(root);
   const state = await loadData(home);
-  const inst = findInstance(state, handle);
+  const inst = resolveRef(state, ref);
   if (!inst) return null;
-  const env: Record<string, string> = { PREMO_DATA_HANDLE: handle };
+  const env: Record<string, string> = { PREMO_DATA_HANDLE: inst.handle };
   if (manifest.data?.dir) Object.assign(env, dirEnv(manifest, resolvedDir(home, inst)));
   return env;
 }
