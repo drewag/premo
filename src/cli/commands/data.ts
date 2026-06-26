@@ -4,6 +4,7 @@ import { loadProject } from "../../core/project.js";
 import { log } from "../../core/logger.js";
 import {
   mintInstance,
+  linkInstance,
   deleteInstance,
   listInstances,
   DataError,
@@ -29,12 +30,15 @@ function notWired(json: boolean): void {
 }
 
 // The public shape the consumer parses — never leaks premo-internal location/ref.
+// `path` is the exception: it's user-supplied (via `link`), not premo-internal, so
+// it's surfaced when present.
 function publicInstance(i: DataInstance) {
   return {
     handle: i.handle,
     name: i.name ?? null,
     from: i.from ?? null,
     createdAt: i.createdAt,
+    ...(i.path ? { path: i.path } : {}),
   };
 }
 
@@ -77,7 +81,7 @@ function label(i: DataInstance): string {
 export function register(program: Command): void {
   const data = program
     .command("data")
-    .description("Manage isolated data instances (create / clone / delete / list).");
+    .description("Manage isolated data instances (create / clone / link / delete / list).");
 
   data
     .command("create")
@@ -95,6 +99,29 @@ export function register(program: Command): void {
     .action((handle: string, opts: { name?: string; json?: boolean }) =>
       runMint(!!opts.json, { name: opts.name, from: handle }),
     );
+
+  data
+    .command("link")
+    .description(
+      "Register a handle pointing at an existing directory (not copied; delete only de-registers).",
+    )
+    .argument("<path>", "an existing directory (absolute, or relative to the cwd)")
+    .option("--name <label>", "a human label for the instance")
+    .option("--json", "emit machine-readable JSON")
+    .action(async (target: string, opts: { name?: string; json?: boolean }) => {
+      const ctx = await requireData(!!opts.json);
+      if (!ctx) return;
+      try {
+        const inst = await linkInstance(ctx.root, ctx.manifest, target, { name: opts.name });
+        if (opts.json) log.json(publicInstance(inst));
+        else log.ok(`linked ${inst.handle}${label(inst)} → ${inst.path}`);
+      } catch (err) {
+        if (!(err instanceof DataError)) throw err;
+        if (opts.json) log.json({ error: err.message });
+        else log.error(err.message);
+        process.exitCode = 1;
+      }
+    });
 
   data
     .command("delete")
@@ -135,8 +162,8 @@ export function register(program: Command): void {
       }
       log.info(`${state.instances.length} instance(s):`);
       for (const i of state.instances) {
-        const from = i.from ? `  ← ${i.from}` : "";
-        log.dim(`  ${i.handle}${label(i)}${from}`);
+        const origin = i.path ? `  → ${i.path}` : i.from ? `  ← ${i.from}` : "";
+        log.dim(`  ${i.handle}${label(i)}${origin}`);
       }
     });
 }

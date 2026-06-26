@@ -281,6 +281,31 @@ even that is free, because `data.env` maps `PREMO_DATA_DIR` onto the var the app
 needs seeding, the app does it on boot (migrations). Side-effect safety (§3.1
 invariant 4) is still the repo's job.
 
+#### `link` — a handle for a directory premo doesn't own
+
+`premo data link <path>` registers a handle whose instance directory **is** an
+existing directory you point at (the path is resolved against the cwd and stored
+absolute in the registry's `path` field), instead of one premo creates under its
+home. Use it to expose a dataset that already lives somewhere — a large shared
+corpus, a mounted volume, a hand-curated fixture — to `dev --data <handle>` without
+copying it in.
+
+Because premo doesn't own that directory, the lifecycle is asymmetric:
+
+- **`dev --data <handle>`** points `PREMO_DATA_DIR` at the linked path, exactly like
+  a managed instance — the consumer never knows the difference (the handle is still
+  the only reference).
+- **`clone <linked-handle>`** copies the external directory **into** a new
+  premo-managed instance (CoW) — the natural way to snapshot an external dataset
+  into a managed golden.
+- **`delete <linked-handle>`** only **de-registers** the handle. premo never runs
+  teardown (built-in `rm` _or_ a wired `delete`) against a path it didn't create —
+  the directory and its contents are left untouched.
+
+Absolute paths are machine-specific, so a link lives in the (machine-local,
+gitignored) registry, never in committed `premo.json` — consistent with instances
+being transient registry state, not config (§3.4).
+
 ### 3.3 Extension seam — future adapters & non-deterministic substrates
 
 The adapter interface is `{ create, clone, delete }` over an opaque handle; the

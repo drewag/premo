@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { mkdir, rm, cp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes, createHash } from "node:crypto";
@@ -29,12 +29,17 @@ import { sanitizeProjectName } from "./project.js";
 // a non-deterministic substrate's `create` script may emit on stdout for premo to
 // replay (reserved; see §3.3) — the directory adapter derives its path from the
 // handle and never sets it.
+//
+// `path` is set only by `link` (directory adapter): the handle points at an
+// existing absolute directory premo does NOT own, instead of a home-derived one.
+// premo never creates or deletes that directory — `delete` only de-registers it.
 export interface DataInstance {
   handle: string;
   name?: string;
   from?: string | null;
   createdAt: string;
   ref?: string;
+  path?: string;
 }
 
 export interface DataState {
@@ -75,6 +80,13 @@ export async function dataHome(root: string): Promise<string> {
 
 function instanceDirAt(home: string, handle: string): string {
   return path.join(home, handle);
+}
+
+// The on-disk dir an instance resolves to: a `link`ed instance's custom absolute
+// path, else the home-derived dir for this handle. Use this everywhere a tracked
+// instance's directory is needed, so linked instances are transparent.
+function resolvedDir(home: string, inst: DataInstance): string {
+  return inst.path ?? instanceDirAt(home, inst.handle);
 }
 
 // The on-disk directory for a directory-adapter instance. Async because it
@@ -187,8 +199,9 @@ function resolveSource(
     if (!dir) throw new DataError(`source "${LIVE}" needs a directory adapter (set data.dir)`);
     return { fromLabel: LIVE, fromPath: path.join(root, dir) };
   }
-  if (!findInstance(data, from)) throw new DataError(`unknown source handle "${from}"`);
-  return { fromLabel: from, fromPath: instanceDirAt(home, from) };
+  const inst = findInstance(data, from);
+  if (!inst) throw new DataError(`unknown source handle "${from}"`);
+  return { fromLabel: from, fromPath: resolvedDir(home, inst) };
 }
 
 export interface MintOpts {
@@ -258,6 +271,44 @@ export async function mintInstance(
   return instance;
 }
 
+// Register a handle that points at an EXISTING directory (directory adapter only),
+// instead of one premo creates under its home. `target` may be relative — it's
+// resolved against the cwd to an absolute path and stored. premo doesn't own the
+// directory: it's never copied here, and `delete` only de-registers it. Returns
+// the new instance.
+export async function linkInstance(
+  root: string,
+  manifest: ProjectManifest,
+  target: string,
+  opts: { name?: string } = {},
+): Promise<DataInstance> {
+  const data = manifest.data;
+  if (!data) throw new DataError("no `data` wired for this project");
+  if (!data.dir) throw new DataError("`link` needs the directory adapter (set `data.dir`)");
+
+  const abs = path.resolve(target);
+  if (!existsSync(abs)) throw new DataError(`no directory at ${abs}`);
+  if (!statSync(abs).isDirectory()) throw new DataError(`not a directory: ${abs}`);
+
+  const home = await dataHome(root);
+  const state = await loadData(home);
+  const handle = mintHandle(new Set(state.instances.map((i) => i.handle)));
+
+  const instance: DataInstance = {
+    handle,
+    ...(opts.name ? { name: opts.name } : {}),
+    from: null,
+    path: abs,
+    createdAt: new Date().toISOString(),
+  };
+  await withLock(home, async () => {
+    const fresh = await loadData(home);
+    fresh.instances.push(instance);
+    await saveData(home, fresh);
+  });
+  return instance;
+}
+
 // Tear down an instance. Idempotent: an unknown/already-gone handle succeeds
 // quietly so a reaper never wedges. Returns whether anything was tracked.
 export async function deleteInstance(
@@ -267,15 +318,20 @@ export async function deleteInstance(
 ): Promise<boolean> {
   const home = await dataHome(root);
   const state = await loadData(home);
-  if (!findInstance(state, handle)) return false;
+  const inst = findInstance(state, handle);
+  if (!inst) return false;
 
-  const wired = manifest.data?.delete;
-  if (wired) {
-    const injected: Record<string, string> = { PREMO_DATA_HANDLE: handle };
-    if (manifest.data?.dir) injected.PREMO_DATA_DIR = instanceDirAt(home, handle);
-    await runScript(root, manifest, wired, injected);
-  } else if (manifest.data?.dir) {
-    await rm(instanceDirAt(home, handle), { recursive: true, force: true });
+  // A `link`ed instance points at a directory premo doesn't own: never run teardown
+  // (wired or built-in) against it — just drop it from the registry below.
+  if (!inst.path) {
+    const wired = manifest.data?.delete;
+    if (wired) {
+      const injected: Record<string, string> = { PREMO_DATA_HANDLE: handle };
+      if (manifest.data?.dir) injected.PREMO_DATA_DIR = instanceDirAt(home, handle);
+      await runScript(root, manifest, wired, injected);
+    } else if (manifest.data?.dir) {
+      await rm(instanceDirAt(home, handle), { recursive: true, force: true });
+    }
   }
 
   await withLock(home, async () => {
@@ -314,9 +370,10 @@ export async function dataRunEnv(
 ): Promise<Record<string, string> | null> {
   const home = await dataHome(root);
   const state = await loadData(home);
-  if (!findInstance(state, handle)) return null;
+  const inst = findInstance(state, handle);
+  if (!inst) return null;
   const env: Record<string, string> = { PREMO_DATA_HANDLE: handle };
-  if (manifest.data?.dir) Object.assign(env, dirEnv(manifest, instanceDirAt(home, handle)));
+  if (manifest.data?.dir) Object.assign(env, dirEnv(manifest, resolvedDir(home, inst)));
   return env;
 }
 

@@ -7,6 +7,7 @@ import { execa } from "execa";
 import { ProjectManifest } from "../../src/manifest/types.js";
 import {
   mintInstance,
+  linkInstance,
   deleteInstance,
   listInstances,
   dataRunEnv,
@@ -129,6 +130,76 @@ describe("data — directory adapter", () => {
     await expect(mintInstance(dir, dirManifest(), { from: "d_ghost0" })).rejects.toBeInstanceOf(
       DataError,
     );
+  });
+});
+
+describe("data — link (custom absolute path)", () => {
+  it("registers a handle at an existing dir; dev points the app there", async () => {
+    const dir = await root();
+    const ext = await mkdtemp(path.join(tmpdir(), "premo-ext-"));
+    await writeFile(path.join(ext, "data.txt"), "external");
+
+    const inst = await linkInstance(dir, dirManifest(), ext, { name: "shared" });
+    expect(inst.path).toBe(ext);
+    expect(inst.from).toBeNull();
+
+    // The instance dir is the external path — premo did NOT copy it under its home.
+    expect(await dataRunEnv(dir, dirManifest(), inst.handle)).toEqual({
+      PREMO_DATA_HANDLE: inst.handle,
+      PREMO_DATA_DIR: ext,
+      DATA_DIR: ext,
+    });
+  });
+
+  it("resolves a relative path against the cwd to an absolute one", async () => {
+    const dir = await root();
+    const ext = await mkdtemp(path.join(tmpdir(), "premo-ext-"));
+    const inst = await linkInstance(dir, dirManifest(), path.relative(process.cwd(), ext));
+    expect(inst.path).toBe(path.resolve(ext));
+  });
+
+  it("clone of a linked handle copies the external dir into a managed instance", async () => {
+    const dir = await root();
+    const ext = await mkdtemp(path.join(tmpdir(), "premo-ext-"));
+    await writeFile(path.join(ext, "seed.txt"), "from-external");
+
+    const linked = await linkInstance(dir, dirManifest(), ext);
+    const clone = await mintInstance(dir, dirManifest(), { from: linked.handle, name: "managed" });
+    // The clone is premo-owned (home-derived dir), with the external contents.
+    expect(clone.path).toBeUndefined();
+    const cloneDir = await instanceDir(dir, clone.handle);
+    expect(cloneDir.startsWith(await dataHome(dir))).toBe(true);
+    expect(await readFile(path.join(cloneDir, "seed.txt"), "utf8")).toBe("from-external");
+  });
+
+  it("delete of a linked handle de-registers but leaves the directory alone", async () => {
+    const dir = await root();
+    const ext = await mkdtemp(path.join(tmpdir(), "premo-ext-"));
+    await writeFile(path.join(ext, "keep.txt"), "keep");
+
+    const inst = await linkInstance(dir, dirManifest(), ext);
+    expect(await deleteInstance(dir, dirManifest(), inst.handle)).toBe(true);
+    expect((await listInstances(dir)).instances).toEqual([]);
+    // The external dir + its contents survive — premo never owned them.
+    expect(existsSync(path.join(ext, "keep.txt"))).toBe(true);
+  });
+
+  it("rejects a missing path, a file, and a non-directory-adapter project", async () => {
+    const dir = await root();
+    await expect(linkInstance(dir, dirManifest(), "/no/such/dir")).rejects.toBeInstanceOf(
+      DataError,
+    );
+
+    const file = path.join(await mkdtemp(path.join(tmpdir(), "premo-ext-")), "f.txt");
+    await writeFile(file, "x");
+    await expect(linkInstance(dir, dirManifest(), file)).rejects.toBeInstanceOf(DataError);
+
+    const ext = await mkdtemp(path.join(tmpdir(), "premo-ext-"));
+    const wired = ProjectManifest.parse({
+      name: "app",
+      data: { create: "true", delete: "true" }, // no `dir` → no directory adapter
+    });
+    await expect(linkInstance(dir, wired, ext)).rejects.toBeInstanceOf(DataError);
   });
 });
 
