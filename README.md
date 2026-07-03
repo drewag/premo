@@ -45,11 +45,12 @@ premo **runs the commands a project declares** (in `premo.json` and your package
 
 ## Supported stacks
 
-| Adapter        | What it covers                                                                         |
-| -------------- | -------------------------------------------------------------------------------------- |
-| `node-scripts` | Single-package Node app — maps verbs to your `package.json` scripts                    |
-| `workspaces`   | A monorepo (yarn/npm `workspaces` or pnpm) — one package per workspace, affected-aware |
-| `xcode`        | Native iOS/macOS apps — build/test/run on a simulator or device from the CLI           |
+| Adapter        | What it covers                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------------- |
+| `node-scripts` | Single-package Node app — maps verbs to your `package.json` scripts                                           |
+| `workspaces`   | A monorepo (yarn/npm `workspaces` or pnpm) — one package per workspace, affected-aware                        |
+| `xcode`        | Native iOS/macOS apps — build/test/run on a simulator or device from the CLI                                  |
+| `maven`        | A `pom.xml` project (Java/Kotlin services, libraries, Minecraft plugins) — `build`/`test` map to Maven phases |
 
 Unknown stacks still respond with a helpful message; `premo adopt` writes a starter `premo.json` you can edit. Adding an adapter is the main way to contribute — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 

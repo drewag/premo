@@ -4,6 +4,7 @@ import { monorepoAdapter } from "./monorepo.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
 import { xcodeAdapter } from "./xcode.js";
 import { cliAdapter } from "./cli.js";
+import { mavenAdapter } from "./maven.js";
 
 // A package as discovered by an adapter, before it's merged with manifest config.
 export interface DetectedPackage {
@@ -42,12 +43,15 @@ export interface Adapter {
 //   - monorepo: a *discovered* manual monorepo (≥2 sub-projects, no declared
 //     workspaces). Outranks cli/node-scripts so a root `bin` or aggregator
 //     scripts don't hijack a monorepo into looking like a single CLI/package.
+//   - maven: a repo with a root pom.xml (Java/Kotlin/plugins). Before the node
+//     adapters so a Java project with an incidental package.json stays Maven.
 //   - cli: a single `bin` package.
 //   - node-scripts: any single package.json (the catch-all).
 const ADAPTERS: Adapter[] = [
   xcodeAdapter,
   workspacesAdapter,
   monorepoAdapter,
+  mavenAdapter,
   cliAdapter,
   nodeScriptsAdapter,
 ];
