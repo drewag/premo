@@ -1,35 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { detectAdapter } from "../../src/core/adapters/index.js";
-import { mavenAdapter } from "../../src/core/adapters/maven.js";
+import { mavenAdapter, pomArtifactId } from "../../src/core/adapters/maven.js";
 
 async function tmp(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "premo-maven-"));
 }
-async function pom(dir: string, contents: string): Promise<void> {
-  await writeFile(path.join(dir, "pom.xml"), contents);
+async function pom(dir: string, body: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, "pom.xml"), `<project>${body}</project>`);
 }
 
-const SIMPLE_POM = `<project>
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.drewagllc</groupId>
-  <artifactId>worldsets</artifactId>
-  <version>0.0.1</version>
-</project>`;
-
 describe("maven adapter", () => {
-  it("detects a pom.xml and exposes one package named from artifactId", async () => {
+  it("detects a pom.xml and exposes one package named by artifactId", async () => {
     const root = await tmp();
-    await pom(root, SIMPLE_POM);
+    await pom(root, "<groupId>com.acme</groupId><artifactId>billing</artifactId>");
 
     expect(await mavenAdapter.detect(root)).toBe(true);
-    const pkgs = await mavenAdapter.packages(root);
-    expect(pkgs).toHaveLength(1);
-    expect(pkgs[0]!.name).toBe("worldsets");
-    expect(pkgs[0]!.dirs).toEqual(["."]);
-    expect(pkgs[0]!.kind).toBe("command");
+    expect((await detectAdapter(root))?.name).toBe("maven");
+    const [t] = await mavenAdapter.packages(root);
+    expect(t!.name).toBe("billing");
+    expect(t!.dirs).toEqual(["."]);
+    expect(t!.cwd).toBe(root);
   });
 
   it("does not detect a repo without a pom.xml", async () => {
@@ -37,53 +31,89 @@ describe("maven adapter", () => {
     expect(await mavenAdapter.detect(root)).toBe(false);
   });
 
-  it("maps build and test to Maven lifecycle phases; dev/deploy stay unresolved", async () => {
-    const root = await tmp();
-    await pom(root, SIMPLE_POM);
-    const [pkg] = await mavenAdapter.packages(root);
-    expect(await mavenAdapter.command("build", pkg!, root)).toBe("mvn -q clean package");
-    expect(await mavenAdapter.command("test", pkg!, root)).toBe("mvn -q test");
-    expect(await mavenAdapter.command("dev", pkg!, root)).toBeNull();
-    expect(await mavenAdapter.command("deploy", pkg!, root)).toBeNull();
-    expect(await mavenAdapter.command("lint", pkg!, root)).toBeNull();
-  });
-
-  it("takes the project's own artifactId, not the parent's", async () => {
+  it("names by the project's OWN artifactId, not the <parent>'s", async () => {
     const root = await tmp();
     await pom(
       root,
-      `<project>
-        <parent>
-          <groupId>io.papermc.paper</groupId>
-          <artifactId>paper-parent</artifactId>
-          <version>1.0</version>
-        </parent>
-        <artifactId>my-plugin</artifactId>
-      </project>`,
+      "<parent><artifactId>paper-parent</artifactId></parent>" +
+        "<!-- <artifactId>commented-out</artifactId> -->" +
+        "<artifactId>my-plugin</artifactId>",
     );
-    const [pkg] = await mavenAdapter.packages(root);
-    expect(pkg!.name).toBe("my-plugin");
+    const [t] = await mavenAdapter.packages(root);
+    expect(t!.name).toBe("my-plugin");
+    expect(pomArtifactId("<parent><artifactId>p</artifactId></parent>")).toBeNull();
   });
 
-  it("wires lint to Spotless when the plugin is configured", async () => {
+  it("falls back to the directory name when the pom has no artifactId", async () => {
     const root = await tmp();
-    await pom(
-      root,
-      `<project>
-        <artifactId>fmt</artifactId>
-        <build><plugins><plugin>
-          <groupId>com.diffplug.spotless</groupId>
-          <artifactId>spotless-maven-plugin</artifactId>
-        </plugin></plugins></build>
-      </project>`,
-    );
-    const [pkg] = await mavenAdapter.packages(root);
-    expect(await mavenAdapter.command("lint", pkg!, root)).toBe("mvn -q spotless:apply");
+    await pom(path.join(root, "svc"), "<groupId>g</groupId>");
+    const [t] = await mavenAdapter.packages(path.join(root, "svc"));
+    expect(t!.name).toBe("svc");
   });
 
-  it("is chosen by detectAdapter for a pom-only repo", async () => {
+  it("maps build/test to mvn phases; build skips tests (premo test owns them)", async () => {
     const root = await tmp();
-    await pom(root, SIMPLE_POM);
+    await pom(root, "<artifactId>app</artifactId>");
+    const [t] = await mavenAdapter.packages(root);
+    expect(await mavenAdapter.command("build", t!, root)).toBe("mvn -B package -DskipTests");
+    expect(await mavenAdapter.command("test", t!, root)).toBe("mvn -B test");
+    expect(await mavenAdapter.command("deploy", t!, root)).toBeNull();
+  });
+
+  it("prefers the repo's ./mvnw wrapper when present", async () => {
+    const root = await tmp();
+    await pom(root, "<artifactId>app</artifactId>");
+    await writeFile(path.join(root, "mvnw"), "#!/bin/sh\n");
+    const [t] = await mavenAdapter.packages(root);
+    expect(await mavenAdapter.command("build", t!, root)).toBe("./mvnw -B package -DskipTests");
+  });
+
+  it("is honest about dev: a unit without a dev-mode plugin is a `command` with no dev", async () => {
+    const root = await tmp();
+    await pom(root, "<artifactId>lib</artifactId>");
+    const [t] = await mavenAdapter.packages(root);
+    expect(t!.kind).toBe("command"); // nothing serves — no port, no dev server
+    expect(await mavenAdapter.command("dev", t!, root)).toBeNull();
+  });
+
+  it("wires dev to spring-boot:run (forwarding premo's port) when the plugin is declared", async () => {
+    const root = await tmp();
+    await pom(root, "<artifactId>app</artifactId><plugin>spring-boot-maven-plugin</plugin>");
+    const [t] = await mavenAdapter.packages(root);
+    expect(t!.kind).toBe("service"); // a runnable app earns a port
+    expect(await mavenAdapter.command("dev", t!, root)).toBe(
+      "env ${PORT:+SERVER_PORT=$PORT} mvn spring-boot:run",
+    );
+  });
+
+  it("wires dev to quarkus:dev for a Quarkus pom", async () => {
+    const root = await tmp();
+    await pom(root, "<artifactId>app</artifactId><plugin>quarkus-maven-plugin</plugin>");
+    const [t] = await mavenAdapter.packages(root);
+    expect(await mavenAdapter.command("dev", t!, root)).toBe(
+      "env ${PORT:+QUARKUS_HTTP_PORT=$PORT} mvn quarkus:dev",
+    );
+  });
+
+  it("wires lint only for spotless (a real fixer)", async () => {
+    const root = await tmp();
+    await pom(root, "<artifactId>app</artifactId><plugin>spotless-maven-plugin</plugin>");
+    const [t] = await mavenAdapter.packages(root);
+    expect(await mavenAdapter.command("lint", t!, root)).toBe("mvn -B spotless:apply");
+
+    const plain = await tmp();
+    await pom(plain, "<artifactId>app</artifactId>");
+    const [p] = await mavenAdapter.packages(plain);
+    expect(await mavenAdapter.command("lint", p!, plain)).toBeNull();
+  });
+
+  it("a multi-module root pom stays ONE maven project (the reactor), not a monorepo", async () => {
+    const root = await tmp();
+    await pom(root, "<artifactId>parent</artifactId><modules><module>a</module></modules>");
+    await pom(path.join(root, "a"), "<artifactId>a</artifactId>");
+    await pom(path.join(root, "b"), "<artifactId>b</artifactId>");
+
     expect((await detectAdapter(root))?.name).toBe("maven");
+    expect(await mavenAdapter.packages(root)).toHaveLength(1);
   });
 });

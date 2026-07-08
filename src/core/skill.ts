@@ -55,7 +55,7 @@ const SIGNALS: { match: (entry: string) => boolean; label: string; hint: string 
   {
     match: (e) => e === "pom.xml",
     label: "pom.xml",
-    hint: "Maven — `mvn <phase>` (`package`, `test`).",
+    hint: "Maven — the `maven` adapter should handle this; re-run `premo adopt`.",
   },
   {
     match: (e) => e === "deno.json" || e === "deno.jsonc",

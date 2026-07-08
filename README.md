@@ -45,12 +45,14 @@ premo **runs the commands a project declares** (in `premo.json` and your package
 
 ## Supported stacks
 
-| Adapter        | What it covers                                                                                                |
-| -------------- | ------------------------------------------------------------------------------------------------------------- |
-| `node-scripts` | Single-package Node app — maps verbs to your `package.json` scripts                                           |
-| `workspaces`   | A monorepo (yarn/npm `workspaces` or pnpm) — one package per workspace, affected-aware                        |
-| `xcode`        | Native iOS/macOS apps — build/test/run on a simulator or device from the CLI                                  |
-| `maven`        | A `pom.xml` project (Java/Kotlin services, libraries, Minecraft plugins) — `build`/`test` map to Maven phases |
+| Adapter        | What it covers                                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------- |
+| `node-scripts` | Single-package Node app — maps verbs to your `package.json` scripts                                            |
+| `workspaces`   | A monorepo (yarn/npm `workspaces` or pnpm) — one package per workspace, affected-aware                         |
+| `maven`        | A `pom.xml` project (Java/Kotlin services, libraries, plugins; incl. multi-module) — Spring Boot/Quarkus `dev` |
+| `xcode`        | Native iOS/macOS apps — build/test/run on a simulator or device from the CLI                                   |
+
+Every leaf stack above also works as a **child directory of a manual monorepo** (no `workspaces` field needed): a repo with, say, `web/` on Node, `backend/` on Maven, and `ios/` on Xcode gets one target per member, each resolved by its own adapter.
 
 Unknown stacks still respond with a helpful message; `premo adopt` writes a starter `premo.json` you can edit. Adding an adapter is the main way to contribute — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 

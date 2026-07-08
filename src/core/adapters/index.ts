@@ -40,18 +40,25 @@ export interface Adapter {
 
 // Order matters: more specific adapters first.
 //   - workspaces: a declared `workspaces`/pnpm monorepo.
+//   - maven: a root pom.xml (Java/Kotlin/plugins). Outranks monorepo so a
+//     multi-module pom (modules in child dirs, each with its own pom) builds
+//     through Maven's reactor instead of being split into per-dir members —
+//     and thus also the node adapters, so a Java project with an incidental
+//     package.json stays Maven.
 //   - monorepo: a *discovered* manual monorepo (≥2 sub-projects, no declared
 //     workspaces). Outranks cli/node-scripts so a root `bin` or aggregator
 //     scripts don't hijack a monorepo into looking like a single CLI/package.
-//   - maven: a repo with a root pom.xml (Java/Kotlin/plugins). Before the node
-//     adapters so a Java project with an incidental package.json stays Maven.
 //   - cli: a single `bin` package.
 //   - node-scripts: any single package.json (the catch-all).
+//
+// When adding a LEAF adapter (one that describes a single project, not an
+// aggregation), also add it to CHILD_ADAPTERS in monorepo.ts — every leaf
+// stack must work as a monorepo member too.
 const ADAPTERS: Adapter[] = [
   xcodeAdapter,
   workspacesAdapter,
-  monorepoAdapter,
   mavenAdapter,
+  monorepoAdapter,
   cliAdapter,
   nodeScriptsAdapter,
 ];

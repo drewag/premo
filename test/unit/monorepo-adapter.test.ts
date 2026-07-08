@@ -52,6 +52,27 @@ describe("monorepo adapter (manual, recursive depth-1)", () => {
     expect(await monorepoAdapter.command("test", web, root)).toBeNull(); // honest: web has no test
   });
 
+  it("resolves a maven member via the maven adapter (wrapper from the member dir)", async () => {
+    const root = await tmp();
+    await pkg(root, { name: "mono", bin: "./x" });
+    await pkg(path.join(root, "web"), { name: "web", scripts: { build: "vite build" } });
+    await mkdir(path.join(root, "backend"), { recursive: true });
+    await writeFile(
+      path.join(root, "backend", "pom.xml"),
+      "<project><artifactId>svc</artifactId></project>",
+    );
+    await writeFile(path.join(root, "backend", "mvnw"), "#!/bin/sh\n");
+
+    const packages = await monorepoAdapter.packages(root);
+    // Keyed by directory name (backend), like every other member.
+    const be = packages.find((p) => p.name === "backend")!;
+    expect(be.dirs).toEqual(["backend/"]);
+    // Commands resolve from the member's own root: its mvnw, run in its cwd.
+    expect(await monorepoAdapter.command("build", be, root)).toBe("./mvnw -B package -DskipTests");
+    expect(await monorepoAdapter.command("test", be, root)).toBe("./mvnw -B test");
+    expect(await monorepoAdapter.command("dev", be, root)).toBeNull(); // honest: no dev-mode plugin
+  });
+
   it("is polyglot — a node member and an xcode member coexist", async () => {
     const root = await tmp();
     await pkg(root, { name: "mono", bin: "./x" });

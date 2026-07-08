@@ -4,6 +4,7 @@ import type { ProjectManifestInput, Verb } from "../../manifest/types.js";
 import { sanitizeProjectName } from "../project.js";
 import { type Adapter, type DetectedPackage } from "./index.js";
 import { xcodeAdapter } from "./xcode.js";
+import { mavenAdapter } from "./maven.js";
 import { cliAdapter } from "./cli.js";
 import { nodeScriptsAdapter } from "./node-scripts.js";
 
@@ -16,10 +17,12 @@ import { nodeScriptsAdapter } from "./node-scripts.js";
 // The root's own scripts/bin are intentionally ignored: a dev-tool `bin` at the
 // root (odo's `bin/odo.ts`) must not turn the whole monorepo into a `cli`.
 
-// Leaf adapters a member can resolve to. Excludes `monorepo` itself — that
-// enforces the one-level-deep limit (a member that is itself a manual monorepo
-// resolves as a single node package, not a nested rollup) and avoids recursion.
-const CHILD_ADAPTERS: Adapter[] = [xcodeAdapter, cliAdapter, nodeScriptsAdapter];
+// Leaf adapters a member can resolve to — every leaf in index.ts's ADAPTERS,
+// same relative order (keep the two lists in sync). Excludes the aggregators
+// (`workspaces`, `monorepo` itself) — that enforces the one-level-deep limit
+// (a member that is itself a monorepo resolves as a single package, not a
+// nested rollup) and avoids recursion.
+const CHILD_ADAPTERS: Adapter[] = [xcodeAdapter, mavenAdapter, cliAdapter, nodeScriptsAdapter];
 
 // Directories that never hold a member project; skipped for speed and safety.
 const SKIP = new Set(["node_modules", ".git", ".runtime", "dist", "build", "coverage", ".premo"]);
